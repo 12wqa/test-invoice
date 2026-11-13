@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#b91c1c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-title" content="Test Invoice">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Test Invoice</title>
+<style>
+  :root { --red:#b91c1c; --bg:#f4f4f5; --card:#fff; --ink:#18181b; --mute:#71717a; --line:#e4e4e7; --ok:#15803d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:16px/1.4 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--ink);
+         padding:env(safe-area-inset-top) 0 calc(90px + env(safe-area-inset-bottom)); }
+  header { background:var(--red); color:#fff; padding:28px 16px 14px; position:relative; }
+  header h1 { margin:0; font-size:20px; }
+  #ver { position:absolute; top:6px; left:8px; font-size:10px; opacity:.8; }
+  #settingsBtn { position:absolute; right:10px; top:24px; background:none; border:0; color:#fff; font-size:22px; }
+  #resetBtn { position:absolute; right:52px; top:26px; background:#fff3; border:0; color:#fff; font-size:14px; padding:6px 10px; border-radius:14px; }
+  #modeTag { font-size:12px; background:#fff3; padding:2px 8px; border-radius:10px; margin-left:6px; }
+  #modeTag:empty { display:none; }
+  .toggle { display:flex; gap:10px; align-items:center; font-size:16px; }
+  .toggle input { width:24px; height:24px; flex:none; }
+  button.result.on[data-result=pass] { background:var(--ok); color:#fff; border-color:var(--ok); }
+  button.result.on[data-result=fail] { background:var(--red); color:#fff; border-color:var(--red); }
+  button.quote.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  #itemSearch { margin-bottom:4px; }
+  main { padding:12px; display:grid; gap:12px; max-width:640px; margin:0 auto; }
+  .card { background:var(--card); border-radius:12px; padding:14px; box-shadow:0 1px 2px #0001; }
+  .card h2 { margin:0 0 10px; font-size:15px; color:var(--mute); text-transform:uppercase; letter-spacing:.04em; }
+  [hidden] { display:none !important; }
+  select, input[type=text], input[type=url], input[type=password], input[type=email] { width:100%; font-size:17px; padding:12px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+  button { font-size:16px; border-radius:10px; border:0; padding:12px 14px; background:var(--ink); color:#fff; }
+  button.secondary { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  button:disabled { opacity:.4; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > * { flex:1; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .chip { background:#f4f4f5; border:1px solid var(--line); color:var(--ink); padding:6px 10px; font-size:14px; border-radius:16px; }
+  .thumbs { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
+  .thumb { position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; background:#eee; }
+  .thumb img { width:100%; height:100%; object-fit:cover; }
+  .thumb .x { position:absolute; top:4px; right:4px; width:28px; height:28px; padding:0; border-radius:14px; background:#000a; font-size:16px; }
+  .thumb .tag { position:absolute; left:4px; bottom:4px; font-size:11px; background:#000a; color:#fff; padding:2px 6px; border-radius:6px; }
+  .item { display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .item:last-child { border-bottom:0; }
+  .item .nm { flex:1; } .item .pr { color:var(--mute); font-size:14px; }
+  .qty { display:flex; align-items:center; gap:6px; }
+  .qty button { width:38px; height:38px; padding:0; font-size:20px; }
+  .qty span { min-width:20px; text-align:center; font-weight:600; }
+  .totals { text-align:right; font-size:15px; margin-top:8px; } .totals b { font-size:18px; }
+  #sendBar { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line);
+             padding:10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  #sendBtn { width:100%; background:var(--red); font-size:18px; padding:14px; max-width:640px; display:block; margin:0 auto; }
+  .hint { color:var(--mute); font-size:13px; margin-top:6px; }
+  .modal { position:fixed; inset:0; background:#000; z-index:10; display:none; flex-direction:column; }
+  .modal.open { display:flex; }
+  #cropWrap { flex:1; position:relative; touch-action:none; }
+  #cropCanvas { position:absolute; inset:0; width:100%; height:100%; }
+  .modalBar { display:flex; gap:8px; padding:10px 12px calc(10px + env(safe-area-inset-bottom)); background:#111; color:#fff; align-items:center; }
+  .modalBar label { font-size:14px; display:flex; gap:6px; align-items:center; }
+  .sheet { background:#fff; margin:auto; border-radius:14px; padding:16px; width:min(92vw,480px); display:grid; gap:10px; }
+  .sheet h3 { margin:0; }
+  #settings { background:#0008; }
+  #toast { position:fixed; left:50%; transform:translateX(-50%); bottom:100px; background:var(--ink); color:#fff; padding:10px 16px; border-radius:20px; display:none; z-index:20; max-width:90vw; }
+  #updateBanner { display:none; background:#fde68a; padding:10px 14px; text-align:center; }
+  #busy { position:fixed; inset:0; background:#fff9; display:none; align-items:center; justify-content:center; z-index:30; font-size:18px; }
+</style>
+</head>
+<body>
+<div id="updateBanner">New version available — <u>tap to update</u></div>
+<header>
+  <span id="ver"></span>
+  <h1>Test Invoice <span id="modeTag"></span></h1>
+  <button id="resetBtn">↺ New job</button>
+  <button id="settingsBtn" aria-label="Settings">⚙︎</button>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1 · Client</h2>
+    <input id="contactSearch" type="text" placeholder="Search clients…" autocomplete="off" style="margin-bottom:8px">
+    <select id="contact"><option value="">Loading…</option></select>
+  </section>
+
+  <section class="card">
+    <h2>2 · Site</h2>
+    <input id="site" type="text" placeholder="Search this client's sites or type an address" autocomplete="off">
+    <div id="siteChips" class="chips"></div>
+    <div class="hint" id="siteHint"></div>
+  </section>
+
+  <section class="card">
+    <h2>3 · Photos</h2>
+    <div id="thumbs" class="thumbs"></div>
+    <div class="row">
+      <button id="addPhoto" class="secondary">📷 Test photos</button>
+      <button id="addDoc" class="secondary">📄 Document</button>
+    </div>
+    <input id="photoInput" type="file" accept="image/*" multiple hidden>
+    <input id="docInput" type="file" accept="image/*" hidden>
+  </section>
+
+  <section class="card">
+    <h2>4 · Result</h2>
+    <div class="row">
+      <button id="resPass" class="secondary result" data-result="pass">✓ All passed</button>
+      <button id="resFail" class="secondary result" data-result="fail">✗ There was a fail</button>
+    </div>
+    <input id="clientEmail" type="email" inputmode="email" placeholder="client@example.com" autocomplete="off" style="margin-top:10px">
+    <div class="hint">The client gets the result + photos/reports, copied to you and labelled Tested. Remembered for this client.</div>
+    <label class="toggle" style="margin-top:14px"><input id="wantQuote" type="checkbox"> Also start a quote in Xero</label>
+    <input id="quoteNote" type="text" placeholder="Quote for… e.g. replace hydrant valve" autocomplete="off" style="margin-top:8px" hidden>
+    <label class="toggle" style="margin-top:14px"><input id="noInvoice" type="checkbox"> No invoice (contract pricing)</label>
+  </section>
+
+  <section class="card" id="itemsCard">
+    <h2>5 · Items</h2>
+    <input id="itemSearch" type="text" placeholder="Search items…" autocomplete="off">
+    <div id="items"></div>
+    <div class="totals" id="totals"></div>
+  </section>
+
+</main>
+
+<div id="sendBar"><button id="sendBtn" disabled>Create invoice</button></div>
+
+<!-- Crop editor -->
+<div id="cropper" class="modal">
+  <div id="cropWrap"><canvas id="cropCanvas"></canvas></div>
+  <div class="modalBar">
+    <button id="cropCancel" class="secondary">Cancel</button>
+    <button id="cropAuto" class="secondary">Auto</button>
+    <label><input id="cropEnhance" type="checkbox" checked> B&amp;W</label>
+    <button id="cropUse" style="background:var(--red)">Use</button>
+  </div>
+</div>
+
+<!-- Settings -->
+<div id="settings" class="modal">
+  <div class="sheet">
+    <h3>Settings</h3>
+    <label>n8n webhook base URL
+      <input id="setUrl" type="url" placeholder="https://n8n.12wqa.com/webhook">
+    </label>
+    <label>App key
+      <input id="setKey" type="password" placeholder="optional">
+    </label>
+    <div class="hint">Leave URL blank for sample mode — nothing is sent anywhere.</div>
+    <div class="row">
+      <button id="setRefresh" class="secondary">Reload clients &amp; items</button>
+    </div>
+    <div class="row">
+      <button id="setClose" class="secondary">Cancel</button>
+      <button id="setSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="busy">Sending…</div>
+
+<script src="buildInfo.js"></script>
+<script src="geometry.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

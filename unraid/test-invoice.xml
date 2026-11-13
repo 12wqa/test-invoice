@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>test-invoice</Name>
+  <Repository>ghcr.io/12wqa/test-invoice:latest</Repository>
+  <Registry>https://github.com/12wqa/test-invoice/pkgs/container/test-invoice</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/12wqa/test-invoice</Support>
+  <Project>https://github.com/12wqa/test-invoice</Project>
+  <Overview>Allied Fire Test Invoice field app. Static PWA (nginx) - pick client and site, take photos and document scans, then create a Xero draft invoice/quote and email the client the test result, all via n8n. No data is stored in the container.</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:80]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/12wqa/test-invoice/main/app/icon-192.png</Icon>
+  <Config Name="Web port" Target="80" Default="8095" Mode="tcp" Description="Port the app is served on. The Cloudflare tunnel entry invoice.12wqa.com points at http://TOWER-IP:this-port" Type="Port" Display="always" Required="true" Mask="false">8095</Config>
+</Container>
