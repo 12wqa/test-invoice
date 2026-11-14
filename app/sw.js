@@ -1,4 +1,4 @@
-// app v14.0 - changing this line makes every phone pick up the new version (must match buildInfo.js version)
+// app v14.1 - changing this line makes every phone pick up the new version (must match buildInfo.js version)
 importScripts('./buildInfo.js');
 const CACHE = 'photo-invoice-' + self.BUILD_INFO.version;
 const SHELL = ['./', 'index.html', 'app.js', 'visits-core.js', 'app-map.js', 'vendor/maplibre/maplibre-gl.js', 'vendor/maplibre/maplibre-gl.css', 'geometry.js', 'buildInfo.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
