@@ -27,7 +27,7 @@ const SAMPLE = {
 const newJobId = () => crypto.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2);
 // jobId stays the same until the job is sent or cleared, so pressing Send again
 // after a lost reply is recognised by n8n as the same job (no double email/invoice).
-const state = { lookups: null, sample: true, photos: [], qty: {}, result: '', siteId: '', jobId: newJobId() };
+const state = { lookups: null, sample: true, photos: [], qty: {}, result: '', contactId: '', siteId: '', jobId: newJobId() };
 const $ = (id) => document.getElementById(id);
 const money = (n) => '$' + n.toFixed(2);
 const log = (where, msg, data) => console.log(`[${where}] ${msg}`, data ?? '');
@@ -103,63 +103,165 @@ async function loadLookups(force = false) {
 
 /* ---------- render ---------- */
 function render() {
-  renderContacts(); renderSites(); renderItems(); renderThumbs(); validate();
-}
-
-// Client list can be 600+ — the search box narrows the dropdown.
-function renderContacts() {
-  const L = state.lookups || { contacts: [] };
-  const sel = $('contact'), cur = sel.value;
-  const q = $('contactSearch').value.trim().toLowerCase();
-  const list = L.contacts.filter(c => !q || c.name.toLowerCase().includes(q));
-  sel.innerHTML = `<option value="">${q ? list.length + ' match' + (list.length === 1 ? '' : 'es') : 'Select client…'}</option>` +
-    list.map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
-  sel.value = list.some(c => c.id === cur) ? cur : '';
-  if (q && list.length === 1) sel.value = list[0].id; // one match: pick it
-  if (sel.value !== cur) { $('site').value = ''; state.siteId = ''; renderSites(); applyClientPrefs(); }
+  syncCombos(); renderItems(); renderThumbs(); validate();
 }
 
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
-// Site chips: the client's register sites (search by name/address/alias/ID) + recently used sites.
-const siteLabel = (s) => `${s.name} (${s.id})`;
-function renderSites() {
-  const id = $('contact').value;
-  const c = (state.lookups?.contacts || []).find(x => x.id === id);
-  const sites = c?.sites || [];
-  const recent = store.get(KEY.sites, {})[id] || [];
-  const q = $('site').value.trim().toLowerCase();
-  let chips = [], hint = '';
-  if (state.siteId) chips = [];
-  else if (q && sites.length) {
-    const words = q.split(/\s+/);
-    chips = sites.filter(s => words.every(w => s.search.includes(w))).slice(0, 12).map(s => ({ label: siteLabel(s), id: s.id }));
-    if (!chips.length) hint = 'No matching site - what you type will be used as the site.';
-  } else if (!q) {
-    chips = recent.map(r => ({ label: r, id: (r.match(/\(([^()]+)\)$/) || [])[1] || '' }));
-    if (sites.length <= 8) chips = chips.concat(sites.filter(s => !recent.includes(siteLabel(s))).map(s => ({ label: siteLabel(s), id: s.id })));
-    else hint = `${sites.length} sites for this client - type to search (address, name or P-number).`;
+/* ---------- fuzzy search ---------- */
+// Every typed word must match somewhere: as a substring (best, especially at a word start),
+// as letters in order ("hydrt" -> hydrant), or with one typo / swapped letters ("hydarnt").
+const norm = (s) => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+function near(a, b) { // edit distance <= 1, counting two swapped neighbours as one edit
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (i === a.length && i === b.length) return true;
+  return a.slice(i + 1) === b.slice(i + 1) || a.slice(i) === b.slice(i + 1) || a.slice(i + 1) === b.slice(i)
+    || (a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2));
+}
+function fuzzyScore(words, text) {
+  let total = 0;
+  for (const w of words) {
+    const at = text.indexOf(w);
+    if (at >= 0) { total += 100 + w.length * 3 + (at === 0 ? 40 : text[at - 1] === ' ' ? 25 : 0) - Math.min(at, 40) / 4; continue; }
+    let from = 0, last = -1, gaps = 0, ok = true;
+    for (const ch of w) {
+      const f = text.indexOf(ch, from);
+      if (f < 0) { ok = false; break; }
+      if (last >= 0) gaps += f - last - 1;
+      last = f; from = f + 1;
+    }
+    if (ok && gaps <= w.length * 2) { total += 50 - gaps; continue; }
+    if (w.length >= 4 && text.split(' ').some(t => near(w, t))) { total += 35; continue; }
+    return -1;
   }
-  $('siteChips').innerHTML = chips.map(s => `<button class="chip" data-site="${esc(s.label)}" data-siteid="${esc(s.id)}">${esc(s.label)}</button>`).join('');
-  $('siteHint').textContent = hint || (sites.length ? '' : 'Type the site address.');
+  return total;
+}
+function fuzzyFilter(list, query, textOf) {
+  const words = norm(query).split(' ').filter(Boolean);
+  if (!words.length) return list;
+  return list.map(x => ({ x, s: fuzzyScore(words, norm(textOf(x))) }))
+    .filter(r => r.s >= 0).sort((p, q) => q.s - p.s).map(r => r.x);
+}
+// Bold the parts of a label that literally match a typed word.
+function highlight(label, query) {
+  label = String(label || '');
+  const words = norm(query).split(' ').filter(w => w.length > 1);
+  if (!words.length) return esc(label);
+  const re = new RegExp(words.join('|'), 'gi');
+  let out = '', last = 0;
+  label.replace(re, (m, i) => { out += esc(label.slice(last, i)) + '<mark>' + esc(m) + '</mark>'; last = i + m.length; return m; });
+  return out + esc(label.slice(last));
 }
 
-// Selected items always show; others only when they match the search (max 40).
+/* ---------- searchable dropdowns ---------- */
+// One box + a scrollable list under it: tap the box to see everything, type to fuzzy-filter, tap a row to pick.
+const MAX_ROWS = 80;
+const combos = [];
+function makeCombo(o) {
+  const input = $(o.input), list = $(o.list), clear = $(o.clear);
+  const c = { input, list, open: false, rows: [] };
+  c.show = () => {
+    const all = o.items();
+    const rows = fuzzyFilter(all, input.value, o.text);
+    const head = o.head ? o.head(input.value) : '';
+    list.innerHTML = head + (rows.length
+      ? rows.slice(0, MAX_ROWS).map((x, i) => `<div class="opt" data-i="${i}">${o.row(x, input.value)}</div>`).join('')
+        + (rows.length > MAX_ROWS ? `<div class="opt-more">${rows.length - MAX_ROWS} more — keep typing to narrow it down</div>` : '')
+      : `<div class="opt-more">${esc(o.empty(input.value, all))}</div>`);
+    c.rows = rows; list.hidden = false; c.open = true;
+  };
+  c.close = () => { list.hidden = true; c.open = false; };
+  const pick = (x) => { c.close(); input.blur(); o.pick(x); clear.hidden = !input.value; log('combo', 'picked', { box: o.input }); };
+  input.addEventListener('focus', () => { c.show(); list.scrollTop = 0; setTimeout(() => input.scrollIntoView({ block: 'start', behavior: 'smooth' }), 300); });
+  input.addEventListener('input', () => { if (o.onType) o.onType(input.value); c.show(); list.scrollTop = 0; clear.hidden = !input.value; });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); if (c.rows[0] && input.value.trim()) pick(c.rows[0]); else { c.close(); input.blur(); } }
+    if (e.key === 'Escape') c.close();
+  });
+  list.addEventListener('click', e => {
+    const el = e.target.closest('.opt'); if (!el) return;
+    if (el.dataset.free) { c.close(); input.blur(); return; } // "use what I typed"
+    pick(c.rows[+el.dataset.i]);
+  });
+  clear.addEventListener('click', () => { input.value = ''; clear.hidden = true; if (o.onType) o.onType(''); input.focus(); c.show(); });
+  combos.push(c);
+  return c;
+}
+document.addEventListener('pointerdown', e => {
+  for (const c of combos) if (c.open && !c.input.closest('.combo').contains(e.target)) c.close();
+});
+
+const currentClient = () => (state.lookups?.contacts || []).find(c => c.id === state.contactId);
+const siteLabel = (s) => s.id ? `${s.name} (${s.id})` : s.name;
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+function setClient(id) {
+  if (id === state.contactId) return;
+  state.contactId = id; $('site').value = ''; state.siteId = '';
+  log('client', 'set', { id });
+  applyClientPrefs(); syncCombos(); validate();
+}
+
+// Client's register sites, with recently used ones (incl. typed addresses) first.
+function siteOptions() {
+  const sites = currentClient()?.sites || [];
+  const recent = (store.get(KEY.sites, {})[state.contactId] || []).map(r => {
+    const id = (r.match(/\(([^()]+)\)$/) || [])[1] || '';
+    const s = sites.find(x => x.id === id);
+    return s ? Object.assign({}, s, { recent: true }) : { id: '', name: r, search: r, recent: true };
+  });
+  return recent.concat(sites.filter(s => !recent.some(r => r.id && r.id === s.id)));
+}
+
+makeCombo({
+  input: 'contactSearch', list: 'contactList', clear: 'contactClear',
+  items: () => state.lookups?.contacts || [],
+  text: c => c.name + ' ' + (c.registerId || '') + ' ' + (c.email || ''),
+  row: (c, q) => `${highlight(c.name, q)}<div class="sub">${c.sites?.length ? plural(c.sites.length, 'site') : 'no register sites'}${c.id === state.contactId ? ' · selected' : ''}</div>`,
+  empty: (q, all) => all.length ? `No client matches "${q}"` : 'Clients not loaded yet',
+  onType: () => { if (state.contactId) setClient(''); },
+  pick: c => { $('contactSearch').value = c.name; setClient(c.id); }
+});
+
+makeCombo({
+  input: 'site', list: 'siteList', clear: 'siteClear',
+  items: siteOptions,
+  text: s => s.search || s.name,
+  row: (s, q) => `${highlight(s.name, q)}<div class="sub">${esc(s.id || 'typed address')}${s.recent ? ' · recent' : ''}</div>`,
+  head: q => q.trim() && !state.siteId ? `<div class="opt opt-free" data-free="1">Use “${esc(q.trim())}” as the site</div>` : '',
+  empty: (q, all) => !state.contactId ? 'Pick a client first, or just type the address'
+    : all.length ? 'No matching site — what you type will be used' : 'No register sites for this client — type the address',
+  onType: () => { state.siteId = ''; validate(); },
+  pick: s => { $('site').value = siteLabel(s); state.siteId = s.id || ''; validate(); }
+});
+
+makeCombo({
+  input: 'itemSearch', list: 'itemList', clear: 'itemClear',
+  items: () => state.lookups?.items || [],
+  text: it => it.name + ' ' + it.code,
+  row: (it, q) => `<div class="opt-row"><span>${highlight(it.name, q)}<div class="sub">${money(+it.price)} ex GST · ${esc(it.code)}</div></span>${state.qty[it.code] ? `<b class="badge">×${state.qty[it.code]}</b>` : ''}</div>`,
+  empty: (q, all) => all.length ? `No item matches "${q}"` : 'Items not loaded yet',
+  pick: it => { state.qty[it.code] = (state.qty[it.code] || 0) + 1; $('itemSearch').value = ''; renderItems(); validate(); toast('Added: ' + it.name); }
+});
+
+function syncCombos() {
+  const c = currentClient();
+  if (c && document.activeElement !== $('contactSearch')) $('contactSearch').value = c.name;
+  const n = c?.sites?.length || 0;
+  $('siteHint').textContent = !state.contactId || state.siteId ? '' : n ? `${plural(n, 'site')} for this client — tap the box to pick or search.` : 'No register sites for this client — type the address.';
+  [['contactSearch', 'contactClear'], ['site', 'siteClear'], ['itemSearch', 'itemClear']].forEach(([i, x]) => { $(x).hidden = !$(i).value; });
+  for (const cb of combos) if (cb.open) cb.show();
+}
+
+// Items on this job (pick more from the box above).
 function renderItems() {
-  const all = state.lookups?.items || [];
-  const q = $('itemSearch').value.trim().toLowerCase();
-  const picked = all.filter(it => state.qty[it.code] > 0);
-  const matches = q ? all.filter(it => !(state.qty[it.code] > 0) &&
-    (it.name.toLowerCase().includes(q) || String(it.code).toLowerCase().includes(q))).slice(0, 40) : [];
-  const items = all.length <= 12 ? all : picked.concat(matches);
-  const hint = all.length > 12 && !q ? `<div class="hint">Type to search ${all.length} items.</div>` : '';
-  $('items').innerHTML = hint + items.map(it => {
-    const q = state.qty[it.code] || 0;
-    return `<div class="item"><div class="nm">${esc(it.name)}<div class="pr">${money(+it.price)} ex GST</div></div>
-      <div class="qty"><button class="secondary" data-dec="${esc(it.code)}">−</button><span>${q}</span>
-      <button data-inc="${esc(it.code)}">+</button></div></div>`;
-  }).join('') || (hint ? '' : `<div class="hint">${q ? 'No matching items.' : 'No items loaded.'}</div>`);
-  const sub = lines().reduce((a, l) => a + l.qty * l.unitAmount, 0);
+  const picked = (state.lookups?.items || []).filter(it => state.qty[it.code] > 0);
+  $('items').innerHTML = picked.map(it => `<div class="item"><div class="nm">${esc(it.name)}<div class="pr">${money(+it.price)} ex GST</div></div>
+      <div class="qty"><button class="secondary" data-dec="${esc(it.code)}">−</button><span>${state.qty[it.code]}</span>
+      <button data-inc="${esc(it.code)}">+</button></div></div>`).join('')
+    || '<div class="hint">Tap the box above to pick items — type to search.</div>';
+  const sub = lines().reduce((s, l) => s + l.qty * l.unitAmount, 0);
   $('totals').innerHTML = sub ? `Subtotal ${money(sub)} · GST ${money(sub * GST)}<br><b>Total ${money(sub * (1 + GST))}</b>` : '';
 }
 
@@ -179,8 +281,8 @@ const emailMode = () => $('noInvoice').checked;
 
 // Per-client memory: the No-invoice switch and the email address. (Quote is per job, not remembered.)
 function applyClientPrefs() {
-  const id = $('contact').value;
-  const contact = (state.lookups?.contacts || []).find(c => c.id === id);
+  const id = state.contactId;
+  const contact = currentClient();
   $('noInvoice').checked = !!(id && store.get(KEY.noInvoice, {})[id]);
   $('clientEmail').value = (id && store.get(KEY.emails, {})[id]) || contact?.testEmail || contact?.email || '';
   log('applyClientPrefs', 'applied', { id, noInvoice: $('noInvoice').checked, email: $('clientEmail').value });
@@ -188,7 +290,7 @@ function applyClientPrefs() {
 }
 
 function saveClientPrefs() {
-  const id = $('contact').value; if (!id) return;
+  const id = state.contactId; if (!id) return;
   const ni = store.get(KEY.noInvoice, {}); ni[id] = emailMode(); store.set(KEY.noInvoice, ni);
   const em = $('clientEmail').value.trim();
   if (em) { const all = store.get(KEY.emails, {}); all[id] = em; store.set(KEY.emails, all); }
@@ -205,7 +307,7 @@ function renderMode() {
 // While something is missing the button says what, so it never just sits greyed out.
 function validate() {
   const need = [];
-  if (!$('contact').value) need.push('client');
+  if (!state.contactId) need.push('client');
   if (!$('site').value.trim()) need.push('site');
   if (!state.photos.length) need.push('photo');
   if (!state.result) need.push('pass/fail');
@@ -327,7 +429,7 @@ function closeCrop() { $('cropper').classList.remove('open'); crop.src = null; }
 const blobToDataUrl = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
 
 async function submit() {
-  const s = settings(), contactId = $('contact').value, site = $('site').value.trim();
+  const s = settings(), contactId = state.contactId, site = $('site').value.trim();
   const contact = state.lookups.contacts.find(c => c.id === contactId);
   const stamp = new Date().toISOString().slice(0, 10);
   busy(true);
@@ -401,7 +503,7 @@ function resetJob() {
 let armT = 0;
 function newJob() {
   const b = $('resetBtn');
-  const busyJob = state.photos.length || $('contact').value || $('site').value.trim() || Object.values(state.qty).some(q => q > 0);
+  const busyJob = state.photos.length || state.contactId || $('site').value.trim() || Object.values(state.qty).some(q => q > 0);
   if (busyJob && !armT) {
     b.textContent = 'Tap again to clear';
     armT = setTimeout(() => { armT = 0; b.textContent = '↺ New job'; }, 3000);
@@ -409,8 +511,7 @@ function newJob() {
   }
   clearTimeout(armT); armT = 0; b.textContent = '↺ New job';
   resetJob();
-  $('contactSearch').value = ''; $('itemSearch').value = '';
-  renderContacts(); $('contact').value = '';
+  $('contactSearch').value = ''; $('itemSearch').value = ''; state.contactId = '';
   $('noInvoice').checked = false; $('clientEmail').value = '';
   render(); renderMode();
   scrollTo(0, 0);
@@ -420,19 +521,10 @@ function newJob() {
 
 /* ---------- events ---------- */
 $('ver').textContent = BUILD.version;
-$('contact').addEventListener('change', () => { $('site').value = ''; state.siteId = ''; renderSites(); applyClientPrefs(); });
 $('noInvoice').addEventListener('change', () => { saveClientPrefs(); renderMode(); });
 $('clientEmail').addEventListener('input', validate);
 document.querySelectorAll('button.result').forEach(b => b.addEventListener('click', () => { state.result = b.dataset.result; log('result', 'set', state.result); renderMode(); }));
 $('wantQuote').addEventListener('change', () => { log('quote', 'set', $('wantQuote').checked); renderMode(); if ($('wantQuote').checked) $('quoteNote').focus(); });
-$('contactSearch').addEventListener('input', () => { renderContacts(); validate(); });
-$('itemSearch').addEventListener('input', renderItems);
-$('site').addEventListener('input', () => { state.siteId = ''; renderSites(); validate(); });
-$('siteChips').addEventListener('click', e => {
-  const s = e.target.dataset.site; if (!s) return;
-  $('site').value = s; state.siteId = e.target.dataset.siteid || ''; log('site', 'picked', { s, id: state.siteId });
-  renderSites(); validate();
-});
 $('items').addEventListener('click', e => {
   const inc = e.target.dataset.inc, dec = e.target.dataset.dec;
   if (inc) state.qty[inc] = (state.qty[inc] || 0) + 1;

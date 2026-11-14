@@ -28,7 +28,21 @@
   button.result.on[data-result=pass] { background:var(--ok); color:#fff; border-color:var(--ok); }
   button.result.on[data-result=fail] { background:var(--red); color:#fff; border-color:var(--red); }
   button.quote.on { background:var(--ink); color:#fff; border-color:var(--ink); }
-  #itemSearch { margin-bottom:4px; }
+  .combo { position:relative; }
+  .combo input { padding-right:44px; }
+  .combo-clear { position:absolute; right:4px; top:4px; width:40px; height:40px; padding:0; background:none; color:var(--mute); font-size:24px; }
+  .combo-list { position:absolute; left:0; right:0; top:calc(100% + 4px); z-index:15; background:#fff; border:1px solid var(--line);
+                border-radius:10px; box-shadow:0 10px 28px #0003; max-height:min(50vh, 380px); overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+  .opt { padding:12px 14px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .opt:last-child { border-bottom:0; }
+  .opt:active { background:#f4f4f5; }
+  .opt .sub { color:var(--mute); font-size:13px; margin-top:2px; }
+  .opt mark { background:#fde68a; color:inherit; padding:0 1px; border-radius:3px; }
+  .opt-free { color:var(--red); font-weight:600; }
+  .opt-row { display:flex; align-items:center; gap:8px; } .opt-row > span { flex:1; }
+  .badge { background:var(--ink); color:#fff; font-size:13px; padding:2px 8px; border-radius:10px; }
+  .opt-more { padding:12px 14px; color:var(--mute); font-size:14px; }
+  #items { margin-top:8px; }
   main { padding:12px; display:grid; gap:12px; max-width:640px; margin:0 auto; }
   .card { background:var(--card); border-radius:12px; padding:14px; box-shadow:0 1px 2px #0001; }
   .card h2 { margin:0 0 10px; font-size:15px; color:var(--mute); text-transform:uppercase; letter-spacing:.04em; }
@@ -83,14 +97,20 @@
 <main>
   <section class="card">
     <h2>1 · Client</h2>
-    <input id="contactSearch" type="text" placeholder="Search clients…" autocomplete="off" style="margin-bottom:8px">
-    <select id="contact"><option value="">Loading…</option></select>
+    <div class="combo">
+      <input id="contactSearch" type="text" placeholder="Search or pick a client…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button id="contactClear" class="combo-clear" type="button" aria-label="Clear" hidden>×</button>
+      <div id="contactList" class="combo-list" hidden></div>
+    </div>
   </section>
 
   <section class="card">
     <h2>2 · Site</h2>
-    <input id="site" type="text" placeholder="Search this client's sites or type an address" autocomplete="off">
-    <div id="siteChips" class="chips"></div>
+    <div class="combo">
+      <input id="site" type="text" placeholder="Search this client's sites or type an address" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button id="siteClear" class="combo-clear" type="button" aria-label="Clear" hidden>×</button>
+      <div id="siteList" class="combo-list" hidden></div>
+    </div>
     <div class="hint" id="siteHint"></div>
   </section>
 
@@ -120,7 +140,11 @@
 
   <section class="card" id="itemsCard">
     <h2>5 · Items</h2>
-    <input id="itemSearch" type="text" placeholder="Search items…" autocomplete="off">
+    <div class="combo">
+      <input id="itemSearch" type="text" placeholder="Search or pick items…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button id="itemClear" class="combo-clear" type="button" aria-label="Clear" hidden>×</button>
+      <div id="itemList" class="combo-list" hidden></div>
+    </div>
     <div id="items"></div>
     <div class="totals" id="totals"></div>
   </section>
