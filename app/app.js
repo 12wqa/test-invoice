@@ -561,11 +561,14 @@ async function renderJobs(server) {
     if (j.invoiceNumber) bits.push(esc(j.invoiceNumber));
     if (j.quoteNumber) bits.push('quote ' + esc(j.quoteNumber)); else if (j.quote) bits.push('quote requested');
     const xero = j.invoiceId ? `<a href="https://go.xero.com/AccountsReceivable/Edit.aspx?InvoiceID=${encodeURIComponent(j.invoiceId)}" target="_blank" rel="noopener">Open ${esc(j.invoiceNumber || 'invoice')} in Xero</a>` : '';
+    const drive = j.driveUrl ? `<a href="${esc(j.driveUrl)}" target="_blank" rel="noopener">📁 Open job folder in Drive</a>` : '';
+    const driveNote = j.driveStatus && j.driveStatus !== 'filed' ? `<span class="${j.driveUrl ? 'mute' : 'fail'}">Drive: ${esc(j.driveStatus)}</span>` : '';
+    if (j.driveUrl) bits.push('📁');
     return `<div class="job"><div class="job-top"><span class="st st-${cls}">${label}</span><span class="when">${when(j.createdAt)}</span></div>
       <div class="job-main"><b>${esc(j.client)}</b> — ${esc(j.site)}</div>
       <div class="sub">${bits.join(' · ')}</div>
       ${j.note ? `<div class="job-note">${esc(j.note)}</div>` : ''}
-      <div class="job-more">${j.sentTo ? `Emailed to ${esc(j.sentTo)}<br>` : ''}${j.photos ? `${j.photos} photo${j.photos === 1 ? '' : 's'}<br>` : ''}${j.updatedAt && j.updatedAt !== j.createdAt ? `Last update ${when(j.updatedAt)}<br>` : ''}<span class="mute">Job ${esc(String(j.jobId).slice(0, 8))}</span>${xero ? '<br>' + xero : ''}</div></div>`;
+      <div class="job-more">${j.sentTo ? `Emailed to ${esc(j.sentTo)}<br>` : ''}${j.photos ? `${j.photos} photo${j.photos === 1 ? '' : 's'}<br>` : ''}${j.updatedAt && j.updatedAt !== j.createdAt ? `Last update ${when(j.updatedAt)}<br>` : ''}<span class="mute">Job ${esc(String(j.jobId).slice(0, 8))}</span>${xero ? '<br>' + xero : ''}${drive ? '<br>' + drive : ''}${driveNote ? '<br>' + driveNote : ''}</div></div>`;
   }).join('') || `<div class="hint" style="padding:16px">${all.length ? 'Nothing in this filter.' : 'No jobs yet — they appear here once sent.'}</div>`;
 }
 

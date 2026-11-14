@@ -45,3 +45,17 @@ and pick it under Add Container → Template.)
 Open `https://invoice.12wqa.com/#key=APP_KEY` once (the key is saved on the phone and removed from the
 address bar), then Share → Add to Home Screen. The app key lives in n8n (**Check Key (lookups)** and
 **Parse & Check**) - change both together.
+
+## Drive filing (v7.0)
+
+After every job the API workflow hands the job to **Test Invoice Drive Filer v1.0** (n8n, runs on its own so the phone isn't kept waiting). It files into the same tree as the Service Report Processor:
+
+`Service Report Management / <client> / <site> / <year> / <yyyy-mm-dd> PASS|FAIL - <INV / QU / job id>/`
+
+- every photo and report scan
+- `Job summary.txt` (client, site, result, who was emailed, items, invoice/quote numbers, job status)
+- `Invoice INV-xxxx (draft).pdf` and `Quote QU-xxxx (draft).pdf` from Xero - a copy at filing time, while still DRAFT
+
+The folder link and a status (`filed`, `filed, N file(s) missing`, `not filed: ...`) go into the jobs register (`driveUrl`, `driveStatus`) and show on the phone Jobs screen.
+
+To file somewhere else, change `rootId` in the filer's **Settings** node. To use different storage (Unraid share, S3, OneDrive), replace only the filer workflow: it receives one JSON job (fields + base64 photos) and nothing else depends on Drive.
