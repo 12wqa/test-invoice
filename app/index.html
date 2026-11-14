@@ -82,11 +82,26 @@
   #settings { background:#0008; }
   #toast { position:fixed; left:50%; transform:translateX(-50%); bottom:100px; background:var(--ink); color:#fff; padding:10px 16px; border-radius:20px; display:none; z-index:20; max-width:90vw; }
   #updateBanner { display:none; background:#fde68a; padding:10px 14px; text-align:center; }
+  #queueBar { background:#dbeafe; padding:8px 12px; border-bottom:1px solid #bfdbfe; }
+  #queueBar.bad { background:#fee2e2; border-color:#fecaca; }
+  #queueBar .qhead { display:flex; gap:8px; align-items:center; max-width:640px; margin:0 auto; }
+  #queueBar .qhead span { flex:1; font-size:15px; }
+  #queueBar .qhead button { padding:8px 12px; font-size:14px; }
+  #queueList { max-width:640px; margin:8px auto 0; background:#fff; border-radius:10px; }
+  .qjob { display:flex; gap:8px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--line); }
+  .qjob:last-child { border-bottom:0; }
+  .qjob .qinfo { flex:1; font-size:15px; } .qjob .sub { color:var(--mute); font-size:13px; }
+  .qjob .err { color:var(--red); }
+  .qjob .qdel { padding:8px 10px; font-size:13px; }
   #busy { position:fixed; inset:0; background:#fff9; display:none; align-items:center; justify-content:center; z-index:30; font-size:18px; }
 </style>
 </head>
 <body>
 <div id="updateBanner">New version available — <u>tap to update</u></div>
+<div id="queueBar" hidden>
+  <div class="qhead"><span id="queueText"></span><button id="queueSend">Send now</button><button id="queueToggle" class="secondary">Show</button></div>
+  <div id="queueList" hidden></div>
+</div>
 <header>
   <span id="ver"></span>
   <h1>Test Invoice <span id="modeTag"></span></h1>

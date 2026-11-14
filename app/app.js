@@ -344,7 +344,8 @@ function validate() {
   $('sendBtn').disabled = need.length > 0;
   const label = emailMode() ? 'Email client (no invoice)' : 'Create invoice + email client';
   $('sendBtn').textContent = need.length ? 'Still need: ' + need.join(', ')
-    : (state.sample ? label + ' (sample — not sent)' : label);
+    : state.sample ? label + ' (sample — not sent)'
+    : (QUEUE_OK && !navigator.onLine) ? 'No signal — save job, send later' : label;
 }
 
 /* ---------- image helpers ---------- */
@@ -456,9 +457,63 @@ function closeCrop() { $('cropper').classList.remove('open'); crop.src = null; }
 /* ---------- submit ---------- */
 const blobToDataUrl = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
 
+/* ---------- sending + offline queue ---------- */
+// Jobs that can't be sent (no signal, or the send drops/times out) are saved on the phone in IndexedDB
+// and sent automatically when there's signal again. Each job keeps its own ID, so if a send actually got
+// through before the connection dropped, n8n recognises the resend and doesn't email/invoice twice.
+const QUEUE_OK = CAN_SAVE && 'indexedDB' in self;
+const SEND_TIMEOUT_MS = 120000;
+const Q = (() => {
+  let dbp = null;
+  const db = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('test-invoice', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('queue', { keyPath: 'id' });
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const run = async (mode, fn) => {
+    const d = await db();
+    return new Promise((res, rej) => {
+      const t = d.transaction('queue', mode); const req = fn(t.objectStore('queue'));
+      t.oncomplete = () => res(req.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  };
+  return { put: j => run('readwrite', s => s.put(j)), del: id => run('readwrite', s => s.delete(id)), all: () => run('readonly', s => s.getAll()) };
+})();
+if (QUEUE_OK && navigator.storage?.persist) navigator.storage.persist().then(p => log('queue', 'persistent storage', p)).catch(() => {});
+
+// One POST to n8n. Throws with e.network = true when it never got a proper answer (no signal, dropped, timed out).
+async function postJob(payload) {
+  const s = settings();
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), SEND_TIMEOUT_MS);
+  try {
+    // text/plain + key in body = simple CORS request, no preflight. n8n parses the JSON.
+    const r = await fetch(s.url.replace(/\/$/, '') + '/photo-invoice-submit', {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ key: s.key || '', ...payload }), signal: ctl.signal
+    });
+    const body = await r.json().catch(() => ({}));
+    log('postJob', 'response', { id: payload.submissionId, status: r.status, body });
+    if (!r.ok || body.ok === false) { const e = new Error(body.error || 'HTTP ' + r.status); e.status = r.status; throw e; }
+    return body;
+  } catch (e) {
+    if (e.status === undefined) { e.network = true; if (e.name === 'AbortError') e.message = 'no reply (timed out)'; }
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+function sentMessage(body) {
+  if (body.duplicate) return `Already sent earlier (${body.invoiceNumber}) - not sent again`;
+  const parts = [];
+  if (body.invoiceNumber) parts.push(`Draft ${body.invoiceNumber} in Xero`);
+  if (body.sentTo) parts.push(`emailed to ${body.sentTo}`);
+  if (body.quotePending) parts.push('quote being created in Xero');
+  const msg = parts.join(' · ') + ' ✓';
+  return body.warning ? msg + ' — ' + body.warning : msg;
+}
+
 async function submit() {
-  const s = settings(), contactId = state.contactId, site = $('site').value.trim();
-  const contact = state.lookups.contacts.find(c => c.id === contactId);
+  const contactId = state.contactId, site = $('site').value.trim();
+  const contact = currentClient();
   const stamp = new Date().toISOString().slice(0, 10);
   busy(true);
   try {
@@ -488,28 +543,78 @@ async function submit() {
     saveClientPrefs();
     if (state.sample) { toast(`Sample mode: ${payload.mode === 'email' ? 'email' : 'invoice'} built (${photos.length} photos, ${kb} KB) — not sent`, 4000); return; }
 
-    // text/plain + key in body = simple CORS request, no preflight. n8n parses the JSON.
-    const r = await fetch(s.url.replace(/\/$/, '') + '/photo-invoice-submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body: JSON.stringify({ key: s.key || '', ...payload })
-    });
-    const body = await r.json().catch(() => ({}));
-    log('submit', 'response', { status: r.status, body });
-    if (!r.ok || body.ok === false) throw new Error(body.error || 'HTTP ' + r.status);
-
-    rememberSite(contactId, site);
-    resetJob();
-    const parts = [];
-    if (body.invoiceNumber) parts.push(`Draft ${body.invoiceNumber} in Xero`);
-    if (body.sentTo) parts.push(`emailed to ${body.sentTo}`);
-    if (body.quotePending) parts.push('quote being created in Xero');
-    const msg = body.duplicate ? `Already sent earlier (${body.invoiceNumber}) - not sent again` : parts.join(' · ') + ' ✓';
-    toast(body.warning ? msg + ' — ' + body.warning : msg, 5000);
+    if (QUEUE_OK && !navigator.onLine) { await queueJob(payload); return; }
+    busy(true, 'Sending…');
+    try {
+      const body = await postJob(payload);
+      rememberSite(contactId, site);
+      resetJob();
+      toast(sentMessage(body), 5000);
+    } catch (e) {
+      if (e.network && QUEUE_OK) { log('submit', 'no signal, queueing', e.message); await queueJob(payload); return; }
+      throw e;
+    }
   } catch (e) {
     log('submit', 'failed', e.message);
-    toast('Not sent — ' + e.message + '. Your job is still here, try again.', 5000);
+    toast('Not sent — ' + e.message + '. Your job is still here, try again.', 6000);
   } finally { busy(false); }
+}
+
+async function queueJob(payload) {
+  const job = {
+    id: payload.submissionId, createdAt: Date.now(), attempts: 0, status: 'waiting', error: '', payload,
+    label: { client: payload.contact.name || '', site: payload.site, what: (payload.mode === 'email' ? 'email only' : 'invoice + email') + ' · ' + (payload.result === 'fail' ? 'fail' : 'pass') + (payload.quote ? ' · quote' : '') }
+  };
+  await Q.put(job);
+  rememberSite(payload.contact.id, payload.site);
+  resetJob();
+  const n = (await Q.all()).length;
+  log('queue', 'job saved', { id: job.id, waiting: n });
+  toast(`No signal — job saved on this phone and will send automatically (${n} waiting)`, 6000);
+  renderQueue();
+}
+
+// Send waiting jobs oldest first. Stops at the first "still no signal"; server rejections are marked so they
+// stop retrying and show in the list. manual = the Send now button (also retries jobs marked as failed).
+let flushing = false;
+async function flushQueue(manual = false) {
+  if (!QUEUE_OK || flushing || state.sample) return;
+  flushing = true;
+  try {
+    const jobs = (await Q.all()).filter(j => manual || j.status !== 'failed').sort((x, y) => x.createdAt - y.createdAt);
+    if (!jobs.length) return;
+    if (!navigator.onLine) { if (manual) toast('Still no signal — jobs will send when you have signal'); return; }
+    log('queue', 'sending', { count: jobs.length, manual });
+    $('queueText').textContent = `Sending ${jobs.length} waiting job${jobs.length === 1 ? '' : 's'}…`;
+    for (const j of jobs) {
+      try {
+        const body = await postJob(j.payload);
+        await Q.del(j.id);
+        toast(`Sent: ${j.label.client} — ${j.label.site}. ${sentMessage(body)}`, 5000);
+      } catch (e) {
+        if (e.network) { log('queue', 'still no signal', e.message); if (manual) toast('Still no signal — will keep trying'); break; }
+        j.attempts = (j.attempts || 0) + 1; j.error = e.message;
+        if (e.status >= 500 && j.attempts < 5) { await Q.put(j); log('queue', 'server error, retry later', e.message); break; }
+        j.status = 'failed'; await Q.put(j);
+        toast(`Queued job not accepted (${j.label.site}): ${e.message}`, 7000);
+      }
+    }
+  } catch (e) { log('queue', 'flush failed', e.message); }
+  finally { flushing = false; renderQueue(); }
+}
+
+let qDelArm = '';
+async function renderQueue() {
+  if (!QUEUE_OK) return;
+  const jobs = (await Q.all().catch(() => [])).sort((x, y) => x.createdAt - y.createdAt);
+  $('queueBar').hidden = !jobs.length;
+  if (!jobs.length) return;
+  const failed = jobs.filter(j => j.status === 'failed').length;
+  $('queueText').textContent = `📤 ${jobs.length} job${jobs.length === 1 ? '' : 's'} waiting to send` + (failed ? ` (${failed} need attention)` : '');
+  $('queueBar').classList.toggle('bad', failed > 0);
+  $('queueList').innerHTML = jobs.map(j => `<div class="qjob"><div class="qinfo"><b>${esc(j.label.client)}</b> — ${esc(j.label.site)}
+    <div class="sub">${new Date(j.createdAt).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · ${esc(j.label.what)} · ${j.payload.photos.length} photo${j.payload.photos.length === 1 ? '' : 's'}${j.status === 'failed' ? ` · <span class="err">${esc(j.error)}</span>` : ''}</div></div>
+    <button class="secondary qdel" data-qdel="${esc(j.id)}">${qDelArm === j.id ? 'Tap again' : 'Delete'}</button></div>`).join('');
 }
 
 function rememberSite(contactId, site) {
@@ -619,5 +724,18 @@ if (CAN_SAVE && 'serviceWorker' in navigator) {
   });
 }
 
-log('app', 'start', BUILD);
+$('queueSend').onclick = () => flushQueue(true);
+$('queueToggle').onclick = () => { const l = $('queueList'); l.hidden = !l.hidden; $('queueToggle').textContent = l.hidden ? 'Show' : 'Hide'; };
+$('queueList').addEventListener('click', async e => {
+  const id = e.target.dataset.qdel; if (!id) return;
+  if (qDelArm !== id) { qDelArm = id; renderQueue(); setTimeout(() => { if (qDelArm === id) { qDelArm = ''; renderQueue(); } }, 3000); return; }
+  qDelArm = ''; await Q.del(id); log('queue', 'deleted', id); toast('Queued job deleted'); renderQueue();
+});
+addEventListener('online', () => { log('net', 'online'); validate(); flushQueue(); });
+addEventListener('offline', () => { log('net', 'offline'); validate(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flushQueue(); });
+setInterval(() => flushQueue(), 60000);
+
+log('app', 'start', { ...BUILD, queue: QUEUE_OK });
 loadLookups();
+renderQueue().then(() => flushQueue());
