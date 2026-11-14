@@ -384,7 +384,7 @@ function saveClientPrefs() {
 function renderMode() {
   $('itemsCard').hidden = emailMode(); // contract jobs: no items, the test reports say what was done
   document.querySelectorAll('button.result').forEach(b => b.classList.toggle('on', b.dataset.result === state.result));
-  $('quoteNote').hidden = !$('wantQuote').checked;
+  $('quoteBox').hidden = !$('wantQuote').checked;
   validate();
 }
 
@@ -559,6 +559,47 @@ function pickNewSite(s) {
   syncCombos(); validate();
 }
 
+/* ---------- tidy the quote note with an AI model (via n8n) ---------- */
+// Pick Haiku / Kimi / ChatGPT (whichever has credits). If it fails, the others are tried in turn.
+const TIDY = { haiku: 'Haiku', kimi: 'Kimi', chatgpt: 'ChatGPT' };
+const KEY_TIDY = 'pi.tidyModel';
+let tidyPrev = null;
+function tidyModel() { const m = store.get(KEY_TIDY, 'haiku'); return TIDY[m] ? m : 'haiku'; }
+document.querySelectorAll('input[name=tidyModel]').forEach(r => {
+  r.checked = r.value === tidyModel();
+  r.addEventListener('change', () => { if (r.checked) { store.set(KEY_TIDY, r.value); log('tidy', 'model set', r.value); } });
+});
+async function tidyNote() {
+  const text = $('quoteNote').value.trim();
+  if (!text) { toast('Say or type what the quote is for first'); $('quoteNote').focus(); return; }
+  if (state.sample) { toast('Sample mode — tidy is not sent anywhere'); return; }
+  if (navigator.onLine === false) { toast('Tidy needs signal — what you said will be used as it is'); return; }
+  const first = tidyModel();
+  const order = [first].concat(Object.keys(TIDY).filter(m => m !== first));
+  busy(true, `Tidying with ${TIDY[first]}…`);
+  const failed = [];
+  try {
+    for (const model of order) {
+      busy(true, `Tidying with ${TIDY[model]}…`);
+      try {
+        const body = await postJob({ action: 'tidyNote', model, text });
+        if (!body.text) throw new Error('nothing came back');
+        tidyPrev = $('quoteNote').value; $('quoteNote').value = body.text; $('tidyUndo').hidden = false;
+        log('tidy', 'done', { model, failed });
+        toast(failed.length ? `${failed.join(', ')} didn't answer — tidied with ${TIDY[model]}` : `Tidied with ${TIDY[model]} — check it, edit if needed`, failed.length ? 5000 : 3000);
+        return;
+      } catch (e) {
+        log('tidy', 'model failed', { model, error: e.message });
+        if (e.network) { toast('No signal — try Tidy again when you have signal'); return; }
+        failed.push(TIDY[model]);
+      }
+    }
+    toast('None of the models could tidy it (credits?) — what you said will be used as it is', 6000);
+  } finally { busy(false); }
+}
+$('tidyBtn').onclick = tidyNote;
+$('tidyUndo').onclick = () => { if (tidyPrev === null) return; $('quoteNote').value = tidyPrev; tidyPrev = null; $('tidyUndo').hidden = true; };
+
 /* ---------- submit ---------- */
 const blobToDataUrl = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
 
@@ -701,7 +742,7 @@ async function submit() {
       clientEmail: $('clientEmail').value.trim(),
       result: state.result,
       quote: $('wantQuote').checked,
-      quoteNote: $('wantQuote').checked ? $('quoteNote').value.trim().slice(0, 200) : '',
+      quoteNote: $('wantQuote').checked ? $('quoteNote').value.trim().slice(0, 2000) : '',
       lines: emailMode() ? [] : lines(),
       photos
     };
@@ -795,7 +836,7 @@ function resetJob() {
   state.photos.forEach(p => URL.revokeObjectURL(p.url));
   state.photos = []; state.qty = {}; state.result = ''; state.jobId = newJobId();
   $('site').value = ''; state.siteId = ''; state.locId = '';
-  $('wantQuote').checked = false; $('quoteNote').value = '';
+  $('wantQuote').checked = false; $('quoteNote').value = ''; tidyPrev = null; $('tidyUndo').hidden = true;
   render();
 }
 

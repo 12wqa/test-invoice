@@ -46,6 +46,15 @@
   #asClient { font-weight:600; }
   #asClient.warn { color:var(--red); }
   #addSite { background:#000a; overflow:auto; }
+  #quoteBox { margin-top:8px; display:grid; gap:8px; }
+  #quoteBox[hidden] { display:none; }
+  #quoteNote { width:100%; font:inherit; font-size:17px; padding:12px; border:1px solid var(--line); border-radius:10px; resize:vertical; }
+  .tidyRow { display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; font-size:14px; }
+  .tidyRow label { display:flex; gap:5px; align-items:center; }
+  .tidyRow input { width:18px; height:18px; margin:0; }
+  .tidyLbl { color:var(--mute); }
+  .tidyBtns { display:flex; gap:8px; }
+  .tidyBtns button { flex:1; }
   .opt-row { display:flex; align-items:center; gap:8px; } .opt-row > span { flex:1; }
   .badge { background:var(--ink); color:#fff; font-size:13px; padding:2px 8px; border-radius:10px; }
   .opt-more { padding:12px 14px; color:var(--mute); font-size:14px; }
@@ -189,7 +198,17 @@
     <input id="clientEmail" type="email" inputmode="email" placeholder="client@example.com" autocomplete="off" style="margin-top:10px">
     <div class="hint">The client gets the result + photos/reports, copied to you and labelled Tested. Remembered for this client.</div>
     <label class="toggle" style="margin-top:14px"><input id="wantQuote" type="checkbox"> Also start a quote in Xero</label>
-    <input id="quoteNote" type="text" placeholder="Quote for… e.g. replace hydrant valve" autocomplete="off" style="margin-top:8px" hidden>
+    <div id="quoteBox" hidden>
+      <textarea id="quoteNote" rows="4" maxlength="2000" placeholder="What's the quote for? Tap the keyboard mic and talk, e.g. landing valve leaking on level 3, block plan out of date…"></textarea>
+      <div class="tidyRow">
+        <span class="tidyLbl">Tidy with</span>
+        <label><input type="radio" name="tidyModel" value="haiku"> Haiku</label>
+        <label><input type="radio" name="tidyModel" value="kimi"> Kimi</label>
+        <label><input type="radio" name="tidyModel" value="chatgpt"> ChatGPT</label>
+      </div>
+      <div class="row tidyBtns"><button id="tidyBtn" class="secondary" type="button">✨ Tidy</button><button id="tidyUndo" class="secondary" type="button" hidden>↩ Undo</button></div>
+      <div class="hint">Each line becomes its own quote line (no price) — price them in Xero.</div>
+    </div>
     <label class="toggle" style="margin-top:14px"><input id="noInvoice" type="checkbox"> No invoice (contract pricing)</label>
   </section>
 

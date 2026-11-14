@@ -71,3 +71,9 @@ Every physical address has one **AFS number** (`AFS-0001`…), kept in the regis
 - new address → next AFS number, new register row **and** a new Site_List row for the report automation
 
 The yearly (annual) month is optional; set it later in the register (column **Annual month**) if unsure. Jobs send `locationId`, and the Drive job summary shows the AFS number.
+
+## Quote note tidy (v9.0)
+
+The quote note is a text box: tap the keyboard mic and talk. **✨ Tidy** sends it to n8n (`action: tidyNote`), which asks the picked model (Haiku via the Anthropic key, Kimi via OpenRouter, ChatGPT via the OpenAI key) to turn it into short scope lines without adding anything. The picked model is remembered on the phone; if it fails (no credits) the app tries the others. **↩ Undo** puts back what you said. Without signal the note goes as typed.
+
+Each line of the note becomes its own description-only line on the Xero draft quote (no quantity or price), so you just price them in Xero. Model names are in **Parse & Check** (`MODELS`); to swap one, change it there (and the matching **Ask …** node's credential if the provider changes).
