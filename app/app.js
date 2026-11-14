@@ -590,11 +590,12 @@ function renderSiteVisits() {
   if (calData.none) { box.hidden = false; box.innerHTML = '<div class="sv-note">Not on the visits calendar (site inactive?)</div>'; return; }
   const { site, meta } = calData, V = VISITS;
   const now = meta.now >= 0 && meta.now <= 11 ? meta.now : -1;
-  const thisMonth = now >= 0 ? `${V.MON[now]}: ${V.TYPE[V.typeOf(site, now)]} · ${V.STATUS[V.statusOf(site, now, meta)]}` : String(meta.year);
+  const tNow = now >= 0 ? V.typeOf(site, now) : '';
+  const thisMonth = now >= 0 ? (tNow ? `${V.MON[now]}: ${V.TYPE[tNow]} · ${V.STATUS[V.statusOf(site, now, meta)]}` : `${V.MON[now]}: no visit this month`) : String(meta.year);
   box.hidden = false;
   box.innerHTML = `<div class="sv-head"><span>📅 <b>${thisMonth}</b></span><a href="visits.html">All sites →</a></div>`
     + V.stripHtml(site, meta)
-    + `<div class="sv-note">Y yearly · 6 six-monthly · M monthly — tap a month for its reports${site.annual < 0 ? ' · <b>yearly month not set</b>' : ''}</div>`;
+    + `<div class="sv-note">Visits here: ${esc(V.patternText(site))} — tap a month for its reports${site.annual < 0 ? ' · <b>yearly month not set</b>' : ''}</div>`;
 }
 $('siteVisits').addEventListener('click', e => {
   const c = e.target.closest('[data-vm]'); if (!c || !calData || !calData.site) return;

@@ -34,6 +34,7 @@
   td.m .c { border-radius:7px; padding:7px 0; font-weight:700; font-size:13px; cursor:pointer; border:1px solid transparent; }
   td.m.now { background:#fffbeb; }
   td.m .c.st-norec { border:1px dashed #d4d4d8; }
+  td.m .c.st-none { cursor:default; }
   td.m .c:hover { outline:2px solid var(--ink); }
   .msg { padding:30px 20px; color:var(--mute); }
   #panel { position:fixed; top:0; right:0; bottom:0; width:min(420px, 100vw); background:#fff; box-shadow:-4px 0 18px #0002; padding:18px; overflow:auto; transform:translateX(105%); transition:transform .18s; z-index:10; }
@@ -74,8 +75,8 @@
   </div>
   <div class="summary" id="summary"></div>
   <div class="legend">
-    <b>Letters:</b> Y yearly · 6 six-monthly · M monthly &nbsp;
-    <span class="vchip st-done">Done</span><span class="vchip st-due">Due this month</span><span class="vchip st-missed">Not recorded</span><span class="vchip st-upcoming">Coming up</span><span class="vchip st-norec">Before records</span>
+    <b>Letters:</b> Y yearly · 6 six-monthly · M monthly · <b>·</b> none (set per site in the register <i>Visits</i> column) &nbsp;
+    <span class="vchip st-done">Done</span><span class="vchip st-due">Due this month</span><span class="vchip st-missed">Not recorded</span><span class="vchip st-upcoming">Coming up</span><span class="vchip st-norec">Before records</span><span class="vchip st-none">· no visit</span>
     &nbsp;Click a month to see its reports.
   </div>
   <div class="wrap"><div id="grid" class="msg">Loading…</div></div>

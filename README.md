@@ -87,3 +87,9 @@ The quote is a list of boxes, one per item: talk one in, tap **+ Add another ite
 - **Phone:** pick a site and a 12-month strip shows under it (Y yearly, 6 six-monthly, M monthly; green done, amber due this month, red not recorded, grey coming up, dashed = before records started). Tap a month for its reports, job folder and invoice. Cached per site for no-signal use.
 - **All sites:** `visits.html` (linked from the phone strip and the admin page) — every active AFS site × Jan–Dec, search, client filter, Due this month / Yearly this month / Missed / No yearly month. Click a cell for the details panel. Uses the admin key or the phone's app key.
 - **Data:** n8n `action: calendar` (API workflow → Build Calendar). Schedule = register **Annual month** (most common across a site's rows); 6-monthly = +6; the rest monthly. "Done" = an app job (jobs register, matched by `locationId` / Site ID) or a filed service report (`sr_ledger`, matched via Site_List SITE### → AFS) in that month. Test-route and duplicate reports are ignored. Records start Nov 2026 (`trackFrom` in Build Calendar); earlier months show as "before records".
+
+## Visit patterns (v11.1)
+
+Register Sites tab column **Visits** (AB) says which visits a site gets: any of `M` (monthly), `6` (6-monthly), `Y` (yearly), e.g. `M 6 Y`, `6 Y`, `Y`, `M`. Pre-filled 14 Nov 2026 from the Uptick services / email frequency notes; blank rows were set to `M 6 Y`. Edit it in the sheet; the calendar picks it up on the next load.
+
+Placement: yearly in the **Annual month**; 6-monthly six months later; monthly in every other month. Missing types fall back: no `Y` → the annual month shows `6` (or `M`); no `6` → that month shows `M`; no `M` → other months show `·` (no visit, never counted as due or missed).

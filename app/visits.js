@@ -59,14 +59,15 @@ function render() {
   // summary for this month (current year only)
   if (meta.now >= 0 && meta.now <= 11) {
     let done = 0, due = 0, y = 0;
-    for (const s of d.sites) { const x = V.statusOf(s, meta.now, meta); if (x === 'done') done++; if (x === 'due') due++; if (V.typeOf(s, meta.now) === 'Y') y++; }
-    $('summary').textContent = `${V.MON[meta.now]} ${meta.year}: ${done} done · ${due} still due · ${y} yearly visits this month · ${d.sites.length} active sites` + (d.unmatched ? ` · ${d.unmatched} record(s) couldn't be matched to a site` : '');
+    let none = 0;
+    for (const s of d.sites) { const x = V.statusOf(s, meta.now, meta); if (x === 'done') done++; if (x === 'due') due++; if (x === 'none') none++; if (V.typeOf(s, meta.now) === 'Y') y++; }
+    $('summary').textContent = `${V.MON[meta.now]} ${meta.year}: ${done} done · ${due} still due · ${y} yearly · ${none} with no visit this month · ${d.sites.length} active sites` + (d.unmatched ? ` · ${d.unmatched} record(s) couldn't be matched to a site` : '');
   } else $('summary').textContent = `${d.sites.length} active sites` + (meta.now === 12 ? ' · past year' : ' · future year');
   if (!rows.length) { $('grid').className = 'msg'; $('grid').textContent = 'No sites match.'; return; }
   const head = '<thead><tr><th class="site">Site (' + rows.length + ')</th>' + V.MON.map((mn, m) => `<th class="${m === meta.now ? 'now' : ''}">${mn}</th>`).join('') + '</tr></thead>';
-  const body = rows.map(s => '<tr><td class="site"><div class="n">' + V.esc(s.name) + '</div><div class="s">' + V.esc(s.loc) + ' · ' + V.esc(s.clients.map(c => c.split(' / ')[0]).join(', ') || 'no client') + (s.annual < 0 ? ' · <b style="color:#b45309">no yearly month</b>' : '') + '</div></td>'
+  const body = rows.map(s => '<tr><td class="site"><div class="n">' + V.esc(s.name) + '</div><div class="s">' + V.esc(s.loc) + ' · ' + V.esc(s.pattern || 'M 6 Y') + ' · ' + V.esc(s.clients.map(c => c.split(' / ')[0]).join(', ') || 'no client') + (s.annual < 0 ? ' · <b style="color:#b45309">no yearly month</b>' : '') + '</div></td>'
     + V.MON.map((mn, m) => { const t = V.typeOf(s, m), x = V.statusOf(s, m, meta); const n = s.visits.filter(v => v.m === m).length;
-      return `<td class="m${m === meta.now ? ' now' : ''}"><div class="c st-${x}" data-loc="${V.esc(s.loc)}" data-m="${m}" title="${mn}: ${V.TYPE[t]} — ${V.STATUS[x]}${n ? ' (' + n + ')' : ''}">${t === '?' ? 'M' : t}</div></td>`; }).join('')
+      return `<td class="m${m === meta.now ? ' now' : ''}"><div class="c st-${x}" data-loc="${V.esc(s.loc)}" data-m="${m}" title="${mn}: ${t ? V.TYPE[t] : 'no visit'} — ${V.STATUS[x]}${n ? ' (' + n + ')' : ''}">${t === '?' ? 'M' : t || '·'}</div></td>`; }).join('')
     + '</tr>').join('');
   $('grid').className = ''; $('grid').innerHTML = '<table>' + head + '<tbody>' + body + '</tbody></table>';
 }
