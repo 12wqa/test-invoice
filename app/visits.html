@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" href="icon-192.png">
+<title>Visits calendar — Allied Fire</title>
+<style>
+  :root { --red:#b91c1c; --bg:#f4f4f5; --ink:#18181b; --mute:#71717a; --line:#e4e4e7; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.4 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--red); color:#fff; padding:12px 20px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:19px; font-weight:600; }
+  header .ver { font-size:12px; opacity:.85; }
+  header nav { margin-left:auto; display:flex; gap:16px; } header nav a { color:#fff; font-size:14px; }
+  .bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:12px 20px; background:#fff; border-bottom:1px solid var(--line); }
+  .bar input[type=search] { font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; min-width:220px; flex:1; max-width:360px; }
+  .bar select, .bar button { font:inherit; padding:7px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; }
+  .yr { display:flex; align-items:center; gap:6px; font-weight:700; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chips button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .summary { color:var(--mute); font-size:13px; padding:8px 20px 0; }
+  .legend { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--mute); padding:6px 20px 10px; }
+  .wrap { margin:0 20px 20px; overflow:auto; max-height:calc(100vh - 190px); border-radius:10px; }
+  table { border-collapse:separate; border-spacing:0; background:#fff; border-radius:10px; box-shadow:0 1px 2px #0001; min-width:900px; width:100%; }
+  th, td { border-bottom:1px solid var(--line); }
+  thead th { position:sticky; top:0; background:#fff; z-index:2; font-size:12px; color:var(--mute); font-weight:600; padding:8px 4px; text-align:center; }
+  thead th.now { color:var(--ink); background:#fef3c7; }
+  th.site, td.site { text-align:left; position:sticky; left:0; background:#fff; z-index:1; padding:8px 10px; min-width:260px; max-width:340px; }
+  thead th.site { z-index:3; }
+  td.site .n { font-weight:600; } td.site .s { color:var(--mute); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:320px; }
+  td.m { padding:4px 3px; text-align:center; }
+  td.m .c { border-radius:7px; padding:7px 0; font-weight:700; font-size:13px; cursor:pointer; border:1px solid transparent; }
+  td.m.now { background:#fffbeb; }
+  td.m .c.st-norec { border:1px dashed #d4d4d8; }
+  td.m .c:hover { outline:2px solid var(--ink); }
+  .msg { padding:30px 20px; color:var(--mute); }
+  #panel { position:fixed; top:0; right:0; bottom:0; width:min(420px, 100vw); background:#fff; box-shadow:-4px 0 18px #0002; padding:18px; overflow:auto; transform:translateX(105%); transition:transform .18s; z-index:10; }
+  #panel.open { transform:none; }
+  #panelClose { position:absolute; top:10px; right:10px; font-size:18px; border:1px solid var(--line); background:#fff; border-radius:8px; padding:4px 10px; cursor:pointer; }
+  #keyCard { max-width:520px; margin:40px auto; background:#fff; border-radius:12px; padding:18px; }
+  #keyCard input { width:100%; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; margin:8px 0; }
+  #keyCard button { font:inherit; padding:8px 14px; border:0; border-radius:8px; background:var(--ink); color:#fff; }
+  @media (max-width: 700px) { th.site, td.site { min-width:150px; max-width:170px; } td.site .s { max-width:160px; } .wrap { max-height:none; margin:0 8px 20px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Visits calendar</h1><span class="ver" id="ver"></span>
+  <nav><a href="./">App</a><a href="admin.html">Admin</a></nav>
+</header>
+
+<div id="keyCard" hidden>
+  <h2 style="margin:0 0 6px">Key needed</h2>
+  <p style="color:var(--mute);margin:0">Paste the admin key (or the app key) once. It's saved in this browser only.</p>
+  <input id="keyInput" type="password" placeholder="adm_… or pi_…" autocomplete="off">
+  <button id="keySave">Continue</button>
+</div>
+
+<div id="main" hidden>
+  <div class="bar">
+    <div class="yr"><button id="yPrev" aria-label="Previous year">‹</button><span id="yLabel"></span><button id="yNext" aria-label="Next year">›</button></div>
+    <input id="q" type="search" placeholder="Search site, address, AFS no., client…" autocomplete="off">
+    <select id="client"><option value="">All clients</option></select>
+    <div class="chips" id="chips">
+      <button data-f="all" class="on">All</button>
+      <button data-f="due">Due this month</button>
+      <button data-f="yearly">Yearly this month</button>
+      <button data-f="missed">Missed this year</button>
+      <button data-f="noannual">No yearly month</button>
+    </div>
+    <button id="reload" title="Reload">⟳</button>
+  </div>
+  <div class="summary" id="summary"></div>
+  <div class="legend">
+    <b>Letters:</b> Y yearly · 6 six-monthly · M monthly &nbsp;
+    <span class="vchip st-done">Done</span><span class="vchip st-due">Due this month</span><span class="vchip st-missed">Not recorded</span><span class="vchip st-upcoming">Coming up</span><span class="vchip st-norec">Before records</span>
+    &nbsp;Click a month to see its reports.
+  </div>
+  <div class="wrap"><div id="grid" class="msg">Loading…</div></div>
+</div>
+
+<aside id="panel" aria-live="polite"><button id="panelClose" aria-label="Close">✕</button><div id="panelBody"></div></aside>
+
+<script src="buildInfo.js"></script>
+<script src="visits-core.js"></script>
+<script src="visits.js"></script>
+</body>
+</html>

@@ -45,7 +45,14 @@
   .opt-add { color:#1d4ed8; font-weight:600; }
   #asClient { font-weight:600; }
   #asClient.warn { color:var(--red); }
-  #addSite { background:#000a; overflow:auto; }
+  #addSite, #visitSheet { background:#000a; overflow:auto; }
+  #siteVisits { margin-top:12px; }
+  .sv-head { display:flex; justify-content:space-between; align-items:baseline; font-size:14px; margin-bottom:6px; gap:8px; }
+  .sv-head a { font-size:13px; color:#1d4ed8; text-decoration:none; white-space:nowrap; }
+  .sv-note { color:var(--mute); font-size:12px; margin-top:4px; }
+  a.btnlink { display:inline-flex; align-items:center; justify-content:center; text-decoration:none; color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:12px; flex:1; }
+  #visitSheet .row { display:flex; gap:8px; }
+  #visitSheet .row > * { flex:1; }
   #quoteBox { margin-top:8px; display:grid; gap:8px; }
   #quoteBox[hidden] { display:none; }
   .qi { display:flex; gap:6px; align-items:flex-start; margin-bottom:8px; }
@@ -180,6 +187,7 @@
       <div id="siteList" class="combo-list" hidden></div>
     </div>
     <div class="hint" id="siteHint"></div>
+    <div id="siteVisits" hidden></div>
   </section>
 
   <section class="card">
@@ -254,6 +262,14 @@
   </div>
 </div>
 
+<!-- Visit details (tap a month in the site strip) -->
+<div id="visitSheet" class="modal">
+  <div class="sheet">
+    <div id="visitBody"></div>
+    <div class="row"><a class="secondary btnlink" id="visitAll" href="visits.html">📅 All sites</a><button id="visitClose" class="secondary">Close</button></div>
+  </div>
+</div>
+
 <!-- Add a new site -->
 <div id="addSite" class="modal">
   <div class="sheet">
@@ -308,6 +324,7 @@
 
 <script src="buildInfo.js"></script>
 <script src="geometry.js"></script>
+<script src="visits-core.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
-// app v10.0 - changing this line makes every phone pick up the new version (must match buildInfo.js version)
+// app v11.0 - changing this line makes every phone pick up the new version (must match buildInfo.js version)
 importScripts('./buildInfo.js');
 const CACHE = 'photo-invoice-' + self.BUILD_INFO.version;
-const SHELL = ['./', 'index.html', 'app.js', 'geometry.js', 'buildInfo.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
+const SHELL = ['./', 'index.html', 'app.js', 'visits-core.js', 'geometry.js', 'buildInfo.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 
 // New versions take over straight away (safe now that app files are network-first).
 self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));

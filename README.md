@@ -81,3 +81,9 @@ Each line of the note becomes its own description-only line on the Xero draft qu
 ## Quote items (v10.0)
 
 The quote is a list of boxes, one per item: talk one in, tap **+ Add another item**, talk the next. ✕ removes an item. ✨ on an item tidies just that one (if the model splits it, the extra lines become new items); **✨ Tidy all** tidies the lot; **↩ Undo tidy** puts back the last tidy. Sent to n8n as the same `quoteNote` (one item per line), so no server change.
+
+## Visits calendar (v11.0)
+
+- **Phone:** pick a site and a 12-month strip shows under it (Y yearly, 6 six-monthly, M monthly; green done, amber due this month, red not recorded, grey coming up, dashed = before records started). Tap a month for its reports, job folder and invoice. Cached per site for no-signal use.
+- **All sites:** `visits.html` (linked from the phone strip and the admin page) — every active AFS site × Jan–Dec, search, client filter, Due this month / Yearly this month / Missed / No yearly month. Click a cell for the details panel. Uses the admin key or the phone's app key.
+- **Data:** n8n `action: calendar` (API workflow → Build Calendar). Schedule = register **Annual month** (most common across a site's rows); 6-monthly = +6; the rest monthly. "Done" = an app job (jobs register, matched by `locationId` / Site ID) or a filed service report (`sr_ledger`, matched via Site_List SITE### → AFS) in that month. Test-route and duplicate reports are ignored. Records start Nov 2026 (`trackFrom` in Build Calendar); earlier months show as "before records".

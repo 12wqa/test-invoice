@@ -287,7 +287,7 @@ makeCombo({
     + `<div class="opt opt-add" data-add="1">+ Add new site to the register</div>`,
   empty: (q, all) => !all.length ? (state.contactId ? 'No register sites for this client — type the address' : 'Sites not loaded yet')
     : 'No matching site — what you type will be used',
-  onType: () => { state.siteId = ''; state.locId = ''; validate(); },
+  onType: () => { state.siteId = ''; state.locId = ''; validate(); showSiteVisits(); },
   pick: s => {
     if (s.clientId && s.clientId !== state.contactId) { // a register site sets (or switches) the client
       $('contactSearch').value = s.clientName; setClient(s.clientId); toast('Client: ' + s.clientName);
@@ -315,6 +315,7 @@ function syncCombos() {
     : n ? `${plural(n, 'site')} for this client — tap to pick or search (other clients' sites show too).` : 'No register sites for this client — type the address, or search all sites.';
   [['contactSearch', 'contactClear'], ['site', 'siteClear'], ['itemSearch', 'itemClear']].forEach(([i, x]) => { $(x).hidden = !$(i).value; });
   for (const cb of combos) if (cb.open) cb.show();
+  if (typeof showSiteVisits === 'function') showSiteVisits();
 }
 
 // Quick items: the common items set on the admin page (admin.html), as tap tiles. Tap = +1, − = take one off.
@@ -558,6 +559,50 @@ function pickNewSite(s) {
   $('site').value = siteLabel(s); state.siteId = s.id || ''; state.locId = s.loc || '';
   syncCombos(); validate();
 }
+
+/* ---------- site visits strip (12 months for the picked site; tap a month for its reports) ---------- */
+// Data: n8n action 'calendar' for one AFS site. Cached per site so it still shows with no signal.
+const KEY_CAL = 'pi.cal';
+let calLoc = '', calData = null;
+async function showSiteVisits() {
+  const box = $('siteVisits');
+  const loc = state.locId;
+  if (!loc || state.sample || !self.VISITS) { box.hidden = true; calLoc = ''; return; }
+  if (loc === calLoc && calData) return renderSiteVisits();
+  calLoc = loc; calData = (store.get(KEY_CAL, {})[loc]) || null;
+  renderSiteVisits();
+  if (navigator.onLine === false) return;
+  try {
+    const s = settings();
+    const body = await VISITS.fetchCalendar(s.url, s.key, { loc });
+    if (calLoc !== loc) return; // site changed while loading
+    const site = (body.sites || [])[0];
+    calData = site ? { site, meta: body.meta, at: Date.now() } : { none: true, at: Date.now() };
+    const all = store.get(KEY_CAL, {}); all[loc] = calData;
+    const keys = Object.keys(all); if (keys.length > 60) delete all[keys[0]];
+    store.set(KEY_CAL, all);
+    renderSiteVisits();
+  } catch (e) { log('visits', 'load failed', e.message); if (!calData) { box.hidden = false; box.innerHTML = '<div class="sv-note">Visits calendar not loaded (' + esc(e.message) + ')</div>'; } }
+}
+function renderSiteVisits() {
+  const box = $('siteVisits');
+  if (!calData) { box.hidden = false; box.innerHTML = '<div class="sv-note">Loading visits…</div>'; return; }
+  if (calData.none) { box.hidden = false; box.innerHTML = '<div class="sv-note">Not on the visits calendar (site inactive?)</div>'; return; }
+  const { site, meta } = calData, V = VISITS;
+  const now = meta.now >= 0 && meta.now <= 11 ? meta.now : -1;
+  const thisMonth = now >= 0 ? `${V.MON[now]}: ${V.TYPE[V.typeOf(site, now)]} · ${V.STATUS[V.statusOf(site, now, meta)]}` : String(meta.year);
+  box.hidden = false;
+  box.innerHTML = `<div class="sv-head"><span>📅 <b>${thisMonth}</b></span><a href="visits.html">All sites →</a></div>`
+    + V.stripHtml(site, meta)
+    + `<div class="sv-note">Y yearly · 6 six-monthly · M monthly — tap a month for its reports${site.annual < 0 ? ' · <b>yearly month not set</b>' : ''}</div>`;
+}
+$('siteVisits').addEventListener('click', e => {
+  const c = e.target.closest('[data-vm]'); if (!c || !calData || !calData.site) return;
+  $('visitBody').innerHTML = VISITS.detailsHtml(calData.site, +c.dataset.vm, calData.meta);
+  $('visitSheet').classList.add('open');
+  log('visits', 'month opened', { loc: calData.site.loc, m: +c.dataset.vm });
+});
+$('visitClose').onclick = () => $('visitSheet').classList.remove('open');
 
 /* ---------- quote items + tidy with an AI model (via n8n) ---------- */
 // One box per quote item (talk each one in). Each item = one no-price line on the Xero draft quote.
