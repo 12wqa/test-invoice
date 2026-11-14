@@ -55,6 +55,7 @@
   #visitSheet .row > * { flex:1; }
   #quoteBox { margin-top:8px; display:grid; gap:8px; }
   #quoteBox[hidden] { display:none; }
+  .qq-head { font-size:14px; color:var(--mute); margin-bottom:6px; } #quoteQuick .quick-grid { margin-bottom:4px; }
   .qi { display:flex; gap:6px; align-items:flex-start; margin-bottom:8px; }
   .qi-n { color:var(--mute); font-size:13px; padding-top:14px; min-width:16px; text-align:right; }
   .qi textarea { flex:1; min-width:0; font:inherit; font-size:17px; padding:10px; border:1px solid var(--line); border-radius:10px; resize:vertical; }
@@ -211,6 +212,7 @@
     <div class="hint">The client gets the result + photos/reports, copied to you and labelled Tested. Remembered for this client.</div>
     <label class="toggle" style="margin-top:14px"><input id="wantQuote" type="checkbox"> Also start a quote in Xero</label>
     <div id="quoteBox" hidden>
+      <div id="quoteQuick" hidden></div>
       <div id="quoteItems"></div>
       <button id="quoteAdd" class="secondary" type="button">+ Add another item</button>
       <div class="tidyRow">
@@ -220,7 +222,7 @@
         <label><input type="radio" name="tidyModel" value="chatgpt"> ChatGPT</label>
       </div>
       <div class="row tidyBtns"><button id="tidyBtn" class="secondary" type="button">✨ Tidy all</button><button id="tidyUndo" class="secondary" type="button" hidden>↩ Undo tidy</button></div>
-      <div class="hint">Each item becomes its own quote line (no price) — price them in Xero. ✨ on an item tidies just that one.</div>
+      <div class="hint">Tiles add priced lines. Each typed item becomes its own line with no price — price those in Xero. ✨ on an item tidies just that one.</div>
     </div>
     <label class="toggle" style="margin-top:14px"><input id="noInvoice" type="checkbox"> No invoice (contract pricing)</label>
   </section>

@@ -27,7 +27,7 @@ const SAMPLE = {
 const newJobId = () => crypto.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2);
 // jobId stays the same until the job is sent or cleared, so pressing Send again
 // after a lost reply is recognised by n8n as the same job (no double email/invoice).
-const state = { lookups: null, sample: true, photos: [], qty: {}, result: '', contactId: '', siteId: '', locId: '', jobId: newJobId() };
+const state = { lookups: null, sample: true, photos: [], qty: {}, qqty: {}, result: '', contactId: '', siteId: '', locId: '', jobId: newJobId() };
 const $ = (id) => document.getElementById(id);
 const money = (n) => '$' + n.toFixed(2);
 const log = (where, msg, data) => console.log(`[${where}] ${msg}`, data ?? '');
@@ -562,6 +562,7 @@ function pickNewSite(s) {
 
 /* ---------- site visits strip (12 months for the picked site; tap a month for its reports) ---------- */
 // Data: n8n action 'calendar' for one AFS site. Cached per site so it still shows with no signal.
+// A site shared by two clients comes back as two rows (one per register row); show the one for this job's client.
 const KEY_CAL = 'pi.cal';
 let calLoc = '', calData = null;
 async function showSiteVisits() {
@@ -570,38 +571,66 @@ async function showSiteVisits() {
   if (!loc || state.sample || !self.VISITS) { box.hidden = true; calLoc = ''; return; }
   if (loc === calLoc && calData) return renderSiteVisits();
   calLoc = loc; calData = (store.get(KEY_CAL, {})[loc]) || null;
+  if (calData && !calData.sites && calData.site) calData = { sites: [calData.site], meta: calData.meta, at: calData.at }; // v11 cache
   renderSiteVisits();
   if (navigator.onLine === false) return;
   try {
     const s = settings();
-    const body = await VISITS.fetchCalendar(s.url, s.key, { loc });
+    const body = await VISITS.fetchCalendar(s.url, s.key, { loc, inactive: true });
     if (calLoc !== loc) return; // site changed while loading
-    const site = (body.sites || [])[0];
-    calData = site ? { site, meta: body.meta, at: Date.now() } : { none: true, at: Date.now() };
+    const sites = body.sites || [];
+    calData = sites.length ? { sites, meta: body.meta, at: Date.now() } : { none: true, at: Date.now() };
     const all = store.get(KEY_CAL, {}); all[loc] = calData;
     const keys = Object.keys(all); if (keys.length > 60) delete all[keys[0]];
     store.set(KEY_CAL, all);
     renderSiteVisits();
   } catch (e) { log('visits', 'load failed', e.message); if (!calData) { box.hidden = false; box.innerHTML = '<div class="sv-note">Visits calendar not loaded (' + esc(e.message) + ')</div>'; } }
 }
+// The register row for this job: the picked site row, else the row for the job's client, else the first active row.
+function calRow() {
+  if (!calData || !calData.sites) return null;
+  const rows = calData.sites, words = (n) => String(n || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 2).join(' ');
+  const c = words(currentClient()?.name);
+  return rows.find(r => r.id === state.siteId) || (c && rows.find(r => words(r.client) === c)) || rows.find(r => r.active !== false) || rows[0];
+}
 function renderSiteVisits() {
   const box = $('siteVisits');
   if (!calData) { box.hidden = false; box.innerHTML = '<div class="sv-note">Loading visits…</div>'; return; }
   if (calData.none) { box.hidden = false; box.innerHTML = '<div class="sv-note">Not on the visits calendar (site inactive?)</div>'; return; }
-  const { site, meta } = calData, V = VISITS;
+  const site = calRow(), meta = calData.meta, V = VISITS;
+  if (!site) { box.hidden = true; return; }
+  const others = calData.sites.filter(r => r !== site && r.active !== false).map(r => r.client).filter(Boolean);
   const now = meta.now >= 0 && meta.now <= 11 ? meta.now : -1;
   const tNow = now >= 0 ? V.typeOf(site, now) : '';
   const thisMonth = now >= 0 ? (tNow ? `${V.MON[now]}: ${V.TYPE[tNow]} · ${V.STATUS[V.statusOf(site, now, meta)]}` : `${V.MON[now]}: no visit this month`) : String(meta.year);
   box.hidden = false;
   box.innerHTML = `<div class="sv-head"><span>📅 <b>${thisMonth}</b></span><a href="visits.html">All sites →</a></div>`
     + V.stripHtml(site, meta)
-    + `<div class="sv-note">Visits here: ${esc(V.patternText(site))} — tap a month for its reports${site.annual < 0 ? ' · <b>yearly month not set</b>' : ''}</div>`;
+    + `<div class="sv-note">${esc(site.client || 'No client')}${site.active === false ? ' · <b style="color:#b91c1c">inactive</b>' : ''} · visits: ${esc(V.patternText(site))} — tap a month for its reports${site.annual < 0 ? ' · <b>yearly month not set</b>' : ''}${others.length ? '<br>Also here: ' + others.map(esc).join(' · ') : ''}</div>`;
 }
 $('siteVisits').addEventListener('click', e => {
-  const c = e.target.closest('[data-vm]'); if (!c || !calData || !calData.site) return;
-  $('visitBody').innerHTML = VISITS.detailsHtml(calData.site, +c.dataset.vm, calData.meta);
+  const c = e.target.closest('[data-vm]'); const site = calRow(); if (!c || !site) return;
+  visitM = +c.dataset.vm;
+  $('visitBody').innerHTML = VISITS.detailsHtml(site, visitM, calData.meta);
   $('visitSheet').classList.add('open');
-  log('visits', 'month opened', { loc: calData.site.loc, m: +c.dataset.vm });
+  log('visits', 'month opened', { id: site.id, loc: site.loc, client: site.client, m: visitM });
+});
+let visitM = 0;
+// Active / inactive switch in the month sheet (per site + client row).
+$('visitBody').addEventListener('click', async e => {
+  const b = e.target.closest('[data-active-toggle]'); if (!b) return;
+  const id = b.dataset.activeToggle, to = b.dataset.activeTo === 'true';
+  if (!to && b.dataset.armed !== '1') { b.dataset.armed = '1'; b.textContent = 'Tap again to make inactive'; return; } // no popups
+  b.disabled = true; b.textContent = 'Saving…';
+  try {
+    const s = settings();
+    await VISITS.setActive(s.url, s.key, id, to);
+    const row = calData.sites.find(r => r.id === id); if (row) row.active = to;
+    const all = store.get(KEY_CAL, {}); all[calLoc] = calData; store.set(KEY_CAL, all);
+    toast(to ? 'Active again' : 'Made inactive');
+    renderSiteVisits();
+    const site = calRow(); if (site) $('visitBody').innerHTML = VISITS.detailsHtml(site, visitM, calData.meta);
+  } catch (err) { log('visits', 'setActive failed', err.message); toast('Could not save: ' + err.message, 4000); b.disabled = false; b.textContent = to ? 'Make active' : 'Make inactive'; }
 });
 $('visitClose').onclick = () => $('visitSheet').classList.remove('open');
 
@@ -636,7 +665,36 @@ $('quoteAdd').onclick = () => {
   if (quoteItems.length && !String(quoteItems[quoteItems.length - 1]).trim()) { renderQuoteItems(quoteItems.length - 1); return; } // reuse the empty last box
   quoteItems.push(''); renderQuoteItems(quoteItems.length - 1); log('quote', 'item added', quoteItems.length);
 };
-function resetQuoteItems() { quoteItems = ['']; tidyPrev = null; $('tidyUndo').hidden = true; renderQuoteItems(); }
+function resetQuoteItems() { quoteItems = ['']; state.qqty = {}; tidyPrev = null; $('tidyUndo').hidden = true; renderQuoteItems(); renderQuoteQuick(); }
+
+// Quote quick items: the same tiles as the invoice, but counted separately (state.qqty).
+// They go on the Xero draft quote as priced lines, above the no-price note lines.
+function quoteLines() {
+  const items = state.lookups?.items || [];
+  return Object.entries(state.qqty).filter(([, n]) => n > 0).map(([code, n]) => {
+    const it = items.find(i => i.code === code) || { code, name: code, price: 0 };
+    return { itemCode: it.code, description: it.name, qty: n, unitAmount: +it.price };
+  });
+}
+function renderQuoteQuick() {
+  const q = quickList(), box = $('quoteQuick');
+  box.hidden = !q.length;
+  if (!q.length) return;
+  const total = quoteLines().reduce((t, l) => t + l.qty * l.unitAmount, 0);
+  box.innerHTML = '<div class="qq-head">⚡ Priced items on the quote' + (total ? ` · <b>${money(total)}</b> ex GST` : '') + '</div><div class="quick-grid">' + q.map(x => {
+    const n = state.qqty[x.itemCode] || 0;
+    return `<div class="qt${n ? ' on' : ''}" data-qqadd="${esc(x.itemCode)}"><div class="qt-label">${esc(x.label)}</div>
+      <div class="qt-foot"><span class="qt-price">${money(+x.item.price)}</span>${n ? `<button class="qt-dec" data-qqdec="${esc(x.itemCode)}" aria-label="One less">−</button><b class="qt-n">${n}</b>` : ''}</div></div>`;
+  }).join('') + '</div>';
+}
+$('quoteQuick').addEventListener('click', e => {
+  const dec = e.target.closest('[data-qqdec]'), tile = e.target.closest('[data-qqadd]');
+  if (dec) { const c = dec.dataset.qqdec; state.qqty[c] = Math.max(0, (state.qqty[c] || 0) - 1); }
+  else if (tile) { const c = tile.dataset.qqadd; state.qqty[c] = (state.qqty[c] || 0) + 1; }
+  else return;
+  log('quote', 'quick item', { code: (dec || tile).dataset.qqdec || (dec || tile).dataset.qqadd, qty: state.qqty });
+  renderQuoteQuick();
+});
 
 // which = index of one item, or undefined for all. Tidied lines replace that item (or all items); extra lines become new items.
 async function tidyItems(which) {
@@ -818,6 +876,7 @@ async function submit() {
       result: state.result,
       quote: $('wantQuote').checked,
       quoteNote: $('wantQuote').checked ? quoteText() : '',
+      quoteLines: $('wantQuote').checked ? quoteLines() : [],
       lines: emailMode() ? [] : lines(),
       photos
     };
@@ -941,7 +1000,7 @@ $('ver').textContent = BUILD.version;
 $('noInvoice').addEventListener('change', () => { saveClientPrefs(); renderMode(); });
 $('clientEmail').addEventListener('input', validate);
 document.querySelectorAll('button.result').forEach(b => b.addEventListener('click', () => { state.result = b.dataset.result; log('result', 'set', state.result); renderMode(); }));
-$('wantQuote').addEventListener('change', () => { log('quote', 'set', $('wantQuote').checked); renderMode(); if ($('wantQuote').checked) renderQuoteItems(0); });
+$('wantQuote').addEventListener('change', () => { log('quote', 'set', $('wantQuote').checked); renderMode(); if ($('wantQuote').checked) { renderQuoteItems(0); renderQuoteQuick(); } });
 $('quickToggle').addEventListener('click', () => { store.set(KEY.quickOpen, !store.get(KEY.quickOpen, true)); renderQuick(); });
 $('quickGrid').addEventListener('click', e => {
   const dec = e.target.closest('[data-qdec]'), tile = e.target.closest('[data-qadd]');

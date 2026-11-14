@@ -1,6 +1,7 @@
 'use strict';
 /* Visits calendar logic shared by the phone app (index.html) and the visits page (visits.html).
-   Data: POST photo-invoice-submit {action:'calendar', key, year?, loc?} -> { meta, sites:[{loc,name,address,suburb,clients,annual,visits:[{m,...}]}] }
+   Data: POST photo-invoice-submit {action:'calendar', key, year?, loc?, inactive?} -> { meta, sites:[{id,loc,name,address,suburb,client,clientId,annual,pattern,active,visits:[{m,...}]}] }
+   One row per register row, so a site shared by two clients comes back as two rows (same loc, different client).
    Schedule rule: only the yearly (annual) month is stored. 6-monthly = annual + 6. Every other month = monthly.
    site.pattern (register 'Visits' column, e.g. 'M 6 Y', '6 Y', 'Y', 'M') says which of those the site gets:
    no Y -> the yearly month falls back to 6 (or M); no 6 -> that month falls back to M; no M -> other months have no visit ('').
@@ -39,6 +40,7 @@
     const vs = (site.visits || []).filter(v => v.m === m);
     let h = `<div class="vd-head"><div class="vd-title">${MON[m]} ${meta.year} · ${t ? TYPE[t] + ' visit' : 'No visit scheduled'}</div>
       <div class="vd-site">${esc(site.name)} <span class="vd-loc">${esc(site.loc)}</span></div>
+      <div class="vd-sub">Client: <b>${esc(site.client || 'not set')}</b></div>
       <span class="vchip st-${s}">${STATUS[s]}</span>${t === '?' ? ' <span class="vd-note">Yearly month not set in the register</span>' : ''}
       <div class="vd-sub">Visits at this site: ${esc(patternText(site))}</div></div>`;
     if (!vs.length) {
@@ -61,7 +63,9 @@
         ${v.note ? `<div class="vd-sub">${esc(v.note)}</div>` : ''}
       </div>`;
     }
-    if (site.clients && site.clients.length) h += `<div class="vd-clients">Clients here: ${site.clients.map(esc).join(' · ')}</div>`;
+    const act = site.active !== false;
+    h += `<div class="vd-clients vd-act">${act ? 'Active for this client' : '<b>Inactive</b> for this client (not on the schedule)'}
+      <button type="button" class="vd-actbtn" data-active-toggle="${esc(site.id)}" data-active-to="${act ? 'false' : 'true'}">${act ? 'Make inactive' : 'Make active'}</button></div>`;
     return h;
   }
 
@@ -72,10 +76,22 @@
   async function fetchCalendar(api, key, opts = {}) {
     const r = await fetch(api.replace(/\/$/, '') + '/photo-invoice-submit', {
       method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-      body: JSON.stringify({ key, action: 'calendar', year: opts.year || 0, loc: opts.loc || '' })
+      body: JSON.stringify({ key, action: 'calendar', year: opts.year || 0, loc: opts.loc || '', inactive: !!opts.inactive })
     });
     const body = await r.json().catch(() => ({}));
     console.log('[visits] calendar', { status: r.status, sites: body.sites && body.sites.length, opts });
+    if (!r.ok || body.ok === false) throw new Error(body.error || 'HTTP ' + r.status);
+    return body;
+  }
+
+  // Turn one register row (site + client) on or off. Admin or app key.
+  async function setActive(api, key, rowId, active) {
+    const r = await fetch(api.replace(/\/$/, '') + '/photo-invoice-submit', {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ key, action: 'setActive', rowId, active })
+    });
+    const body = await r.json().catch(() => ({}));
+    console.log('[visits] setActive', { status: r.status, rowId, active, body });
     if (!r.ok || body.ok === false) throw new Error(body.error || 'HTTP ' + r.status);
     return body;
   }
@@ -91,6 +107,8 @@
   .vd-visit { border-top:1px solid #e4e4e7; padding:10px 0; } .vd-line { font-size:15px; } .vd-sub { color:#71717a; font-size:13px; margin-top:2px; word-break:break-word; }
   .vd-links { display:flex; flex-wrap:wrap; gap:8px 14px; margin-top:6px; } .vd-links a { color:#1d4ed8; text-decoration:none; font-weight:600; }
   .vd-pass { color:#15803d; font-weight:700; } .vd-fail { color:#b91c1c; font-weight:700; }
+  .vd-act { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .vd-actbtn { font:inherit; font-size:12px; padding:4px 10px; border-radius:8px; border:1px solid #d4d4d8; background:#fff; cursor:pointer; }
   .vd-clients { color:#71717a; font-size:12px; border-top:1px solid #e4e4e7; padding-top:8px; margin-top:6px; }
   .vstrip { display:grid; grid-template-columns:repeat(12, 1fr); gap:3px; }
   .vcell { border-radius:6px; text-align:center; padding:5px 0 4px; cursor:pointer; user-select:none; border:1px solid transparent; }
@@ -107,5 +125,5 @@
     }).join('') + '</div>';
   }
 
-  self.VISITS = { MON, TYPE, STATUS, typeOf, statusOf, detailsHtml, stripHtml, fetchCalendar, esc, patternText };
+  self.VISITS = { MON, TYPE, STATUS, typeOf, statusOf, detailsHtml, stripHtml, fetchCalendar, setActive, esc, patternText };
 })();

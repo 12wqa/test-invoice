@@ -93,3 +93,10 @@ The quote is a list of boxes, one per item: talk one in, tap **+ Add another ite
 Register Sites tab column **Visits** (AB) says which visits a site gets: any of `M` (monthly), `6` (6-monthly), `Y` (yearly), e.g. `M 6 Y`, `6 Y`, `Y`, `M`. Pre-filled 14 Nov 2026 from the Uptick services / email frequency notes; blank rows were set to `M 6 Y`. Edit it in the sheet; the calendar picks it up on the next load.
 
 Placement: yearly in the **Annual month**; 6-monthly six months later; monthly in every other month. Missing types fall back: no `Y` → the annual month shows `6` (or `M`); no `6` → that month shows `M`; no `M` → other months show `·` (no visit, never counted as due or missed).
+
+## Clients, active switch, quote quick items (v12.0)
+- **One row per site + client.** A site serviced for two clients (e.g. Balmoral and Maximum at 1 Moola Ct) shows as two calendar rows with the same AFS number. Each register row has its own visit pattern, yearly month and Active flag.
+- **Active / inactive** is per client. Open any month (visits page or the phone strip) → *Make inactive* / *Make active*. It writes register columns R (Status) and S (Active). Rows are never deleted. Visits page: tick *Show inactive* to see and re-activate them (greyed out).
+- **Phone strip** shows the row for the job's client, plus "Also here: …" for other clients at that site.
+- **6-monthly this month** filter on the visits page; the summary counts yearly and 6-monthly visits for active rows only.
+- **Quote quick items:** with *Also start a quote* ticked, the quick-item tiles add priced lines to the Xero draft quote (counted separately from the invoice). Typed items stay as no-price lines below them.
