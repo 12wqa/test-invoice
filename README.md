@@ -24,6 +24,7 @@ creates a Xero **draft** invoice (and optional draft quote) and emails the clien
 | Path | What |
 |---|---|
 | `app/` | The PWA (plain HTML/JS, no build step). `buildInfo.js` = version + n8n API base |
+| `app/admin.html`, `app/admin.js` | Desktop admin page (quick items). Open `/admin.html#key=ADMIN_KEY` once; the admin key lives in n8n **Check Key (lookups)** + **Parse & Check** |
 | `nginx/default.conf` | Web server settings (no caching of app files; the service worker handles offline) |
 | `Dockerfile` | nginx:alpine + `app/` + `nginx/` |
 | `.github/workflows/build.yml` | Build + publish on every push to `main` |

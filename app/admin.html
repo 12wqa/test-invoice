@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" href="icon-192.png">
+<title>Test Invoice — Admin</title>
+<style>
+  :root { --red:#b91c1c; --bg:#f4f4f5; --card:#fff; --ink:#18181b; --mute:#71717a; --line:#e4e4e7; --ok:#15803d; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 -apple-system, system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--red); color:#fff; padding:14px 24px; display:flex; align-items:center; gap:16px; }
+  header h1 { margin:0; font-size:19px; font-weight:600; }
+  header .ver { font-size:12px; opacity:.85; }
+  header a { color:#fff; margin-left:auto; font-size:14px; }
+  main { max-width:1240px; margin:0 auto; padding:20px; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:20px; align-items:start; }
+  @media (max-width: 860px) { main { grid-template-columns:1fr; } }
+  .card { background:var(--card); border-radius:12px; padding:18px; box-shadow:0 1px 2px #0001; }
+  .card h2 { margin:0 0 4px; font-size:17px; }
+  .lead { color:var(--mute); margin:0 0 14px; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:12px; color:var(--mute); text-transform:uppercase; letter-spacing:.04em; padding:6px 6px; border-bottom:1px solid var(--line); }
+  td { padding:6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  td.num { color:var(--mute); width:28px; text-align:right; }
+  td.price { color:var(--mute); white-space:nowrap; width:90px; }
+  td.acts { white-space:nowrap; width:120px; text-align:right; }
+  input[type=text], input[type=password] { width:100%; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  input.bad { border-color:var(--red); background:#fef2f2; }
+  button { font:inherit; border-radius:8px; border:0; padding:8px 14px; background:var(--ink); color:#fff; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--ink); border:1px solid var(--line); }
+  button.icon { padding:6px 9px; background:#fff; color:var(--ink); border:1px solid var(--line); }
+  button:disabled { opacity:.4; cursor:default; }
+  .bar { display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap; }
+  .bar .status { color:var(--mute); margin-left:auto; }
+  .status.ok { color:var(--ok); } .status.err { color:var(--red); } .status.dirty { color:#b45309; }
+  .hint { color:var(--mute); font-size:13px; margin-top:4px; }
+  .warn { color:var(--red); font-size:12px; }
+  /* phone preview */
+  .phone { border:1px solid var(--line); border-radius:22px; padding:14px; background:#fafafa; }
+  .grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:8px; }
+  .qt { border:1px solid var(--line); border-radius:12px; padding:9px; min-height:62px; background:#fff; display:flex; flex-direction:column; justify-content:space-between; }
+  .qt b { font-size:14px; line-height:1.2; } .qt span { color:var(--mute); font-size:12px; }
+  #keyCard { max-width:520px; margin:40px auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Test Invoice — Admin</h1><span class="ver" id="ver"></span>
+  <a href="./">Open the app →</a>
+</header>
+
+<div id="keyCard" class="card" hidden>
+  <h2>Admin key</h2>
+  <p class="lead">Paste the admin key once. It's saved in this browser only.</p>
+  <input id="keyInput" type="password" placeholder="adm_…" autocomplete="off">
+  <div class="bar"><button id="keySave">Continue</button></div>
+</div>
+
+<main id="main" hidden>
+  <section class="card">
+    <h2>Quick items</h2>
+    <p class="lead">The tap tiles in the app's Items section. Give each a short name and pick the Xero item it adds (one per tile). Order here = order in the app.</p>
+    <table>
+      <colgroup><col style="width:32px"><col style="width:26%"><col><col style="width:84px"><col style="width:124px"></colgroup>
+      <thead><tr><th>#</th><th>Name on the tile</th><th>Xero item</th><th>Price</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <datalist id="xeroItems"></datalist>
+    <div class="bar">
+      <button id="addRow" class="secondary">+ Add quick item</button>
+      <button id="save">Save</button>
+      <span id="status" class="status"></span>
+    </div>
+    <div class="hint">Type in the Xero item box to search by name or code. Phones pick up changes the next time the app loads its client list (open the app, or ⚙︎ → Reload clients &amp; items).</div>
+  </section>
+
+  <aside class="card">
+    <h2>Phone preview</h2>
+    <p class="lead">How the tiles will look.</p>
+    <div class="phone"><div class="grid" id="preview"></div></div>
+  </aside>
+</main>
+
+<script src="buildInfo.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

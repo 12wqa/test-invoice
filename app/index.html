@@ -43,6 +43,18 @@
   .badge { background:var(--ink); color:#fff; font-size:13px; padding:2px 8px; border-radius:10px; }
   .opt-more { padding:12px 14px; color:var(--mute); font-size:14px; }
   #items { margin-top:8px; }
+  .quick-toggle { width:100%; text-align:left; display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .quick-toggle .chev { margin-left:auto; color:var(--mute); }
+  .quick-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:8px; margin-bottom:12px; }
+  .qt { border:1px solid var(--line); border-radius:12px; padding:10px; min-height:72px; display:flex; flex-direction:column; justify-content:space-between;
+        background:#fff; user-select:none; -webkit-user-select:none; cursor:pointer; touch-action:manipulation; }
+  .qt:active { background:#f4f4f5; }
+  .qt.on { border-color:var(--red); box-shadow:inset 0 0 0 1px var(--red); }
+  .qt-label { font-weight:600; font-size:15px; line-height:1.2; }
+  .qt-foot { display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .qt-price { color:var(--mute); font-size:13px; flex:1; }
+  .qt-dec { width:34px; height:34px; padding:0; font-size:20px; background:#fff; color:var(--ink); border:1px solid var(--line); }
+  .qt-n { min-width:22px; text-align:center; font-size:18px; color:var(--red); }
   main { padding:12px; display:grid; gap:12px; max-width:640px; margin:0 auto; }
   .card { background:var(--card); border-radius:12px; padding:14px; box-shadow:0 1px 2px #0001; }
   .card h2 { margin:0 0 10px; font-size:15px; color:var(--mute); text-transform:uppercase; letter-spacing:.04em; }
@@ -155,6 +167,10 @@
 
   <section class="card" id="itemsCard">
     <h2>5 · Items</h2>
+    <div id="quickWrap" hidden>
+      <button id="quickToggle" class="secondary quick-toggle" type="button">⚡ Quick items</button>
+      <div id="quickGrid" class="quick-grid"></div>
+    </div>
     <div class="combo">
       <input id="itemSearch" type="text" placeholder="Search or pick items…" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button id="itemClear" class="combo-clear" type="button" aria-label="Clear" hidden>×</button>

@@ -2,7 +2,7 @@
 /* Test Invoice PWA — see README.md for the n8n contract. */
 
 const BUILD = self.BUILD_INFO || { version: 'dev' };
-const KEY = { settings: 'pi.settings', lookups: 'pi.lookups', sites: 'pi.sites', noInvoice: 'pi.noInvoice', emails: 'pi.emails', quote: 'pi.quote' };
+const KEY = { settings: 'pi.settings', lookups: 'pi.lookups', sites: 'pi.sites', noInvoice: 'pi.noInvoice', emails: 'pi.emails', quote: 'pi.quote', quickOpen: 'pi.quickOpen' };
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const validEmails = (s) => { const l = String(s).split(/[,;]/).map(x => x.trim()).filter(Boolean); return l.length > 0 && l.every(e => EMAIL_RE.test(e)); };
 const MAX_SIDE = 1600;            // px, longest edge of any uploaded image
@@ -282,6 +282,27 @@ function syncCombos() {
   for (const cb of combos) if (cb.open) cb.show();
 }
 
+// Quick items: the common items set on the admin page (admin.html), as tap tiles. Tap = +1, − = take one off.
+function quickList() {
+  const items = state.lookups?.items || [];
+  return (state.lookups?.quickItems || []).filter(q => !q.missing)
+    .map(q => Object.assign({}, q, { item: items.find(i => i.code === q.itemCode) })).filter(q => q.item);
+}
+function renderQuick() {
+  const q = quickList();
+  $('quickWrap').hidden = !q.length;
+  if (!q.length) return;
+  const open = store.get(KEY.quickOpen, true);
+  const total = q.reduce((n, x) => n + (state.qty[x.itemCode] || 0), 0);
+  $('quickGrid').hidden = !open;
+  $('quickToggle').innerHTML = `⚡ Quick items${total ? ` <b class="badge">${total}</b>` : ''} <span class="chev">${open ? '▴' : '▾'}</span>`;
+  $('quickGrid').innerHTML = q.map(x => {
+    const n = state.qty[x.itemCode] || 0;
+    return `<div class="qt${n ? ' on' : ''}" data-qadd="${esc(x.itemCode)}"><div class="qt-label">${esc(x.label)}</div>
+      <div class="qt-foot"><span class="qt-price">${money(+x.item.price)}</span>${n ? `<button class="qt-dec" data-qdec="${esc(x.itemCode)}" aria-label="One less">−</button><b class="qt-n">${n}</b>` : ''}</div></div>`;
+  }).join('');
+}
+
 // Items on this job (pick more from the box above).
 function renderItems() {
   const picked = (state.lookups?.items || []).filter(it => state.qty[it.code] > 0);
@@ -289,6 +310,7 @@ function renderItems() {
       <div class="qty"><button class="secondary" data-dec="${esc(it.code)}">−</button><span>${state.qty[it.code]}</span>
       <button data-inc="${esc(it.code)}">+</button></div></div>`).join('')
     || '<div class="hint">Tap the box above to pick items — type to search.</div>';
+  renderQuick();
   const sub = lines().reduce((s, l) => s + l.qty * l.unitAmount, 0);
   $('totals').innerHTML = sub ? `Subtotal ${money(sub)} · GST ${money(sub * GST)}<br><b>Total ${money(sub * (1 + GST))}</b>` : '';
 }
@@ -658,6 +680,15 @@ $('noInvoice').addEventListener('change', () => { saveClientPrefs(); renderMode(
 $('clientEmail').addEventListener('input', validate);
 document.querySelectorAll('button.result').forEach(b => b.addEventListener('click', () => { state.result = b.dataset.result; log('result', 'set', state.result); renderMode(); }));
 $('wantQuote').addEventListener('change', () => { log('quote', 'set', $('wantQuote').checked); renderMode(); if ($('wantQuote').checked) $('quoteNote').focus(); });
+$('quickToggle').addEventListener('click', () => { store.set(KEY.quickOpen, !store.get(KEY.quickOpen, true)); renderQuick(); });
+$('quickGrid').addEventListener('click', e => {
+  const dec = e.target.closest('[data-qdec]'), tile = e.target.closest('[data-qadd]');
+  if (dec) { const c = dec.dataset.qdec; state.qty[c] = Math.max(0, (state.qty[c] || 0) - 1); }
+  else if (tile) { const c = tile.dataset.qadd; state.qty[c] = (state.qty[c] || 0) + 1; }
+  else return;
+  log('quick', dec ? 'minus' : 'plus', { code: (dec || tile).dataset.qdec || (dec || tile).dataset.qadd });
+  renderItems(); validate();
+});
 $('items').addEventListener('click', e => {
   const inc = e.target.dataset.inc, dec = e.target.dataset.dec;
   if (inc) state.qty[inc] = (state.qty[inc] || 0) + 1;
