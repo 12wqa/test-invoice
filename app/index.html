@@ -84,7 +84,27 @@
   .totals { text-align:right; font-size:15px; margin-top:8px; } .totals b { font-size:18px; }
   #sendBar { position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line);
              padding:10px 12px calc(10px + env(safe-area-inset-bottom)); }
-  #sendBtn { width:100%; background:var(--red); font-size:18px; padding:14px; max-width:640px; display:block; margin:0 auto; }
+  .sendrow { display:flex; gap:8px; max-width:640px; margin:0 auto; }
+  #sendBtn { flex:1; background:var(--red); font-size:18px; padding:14px; }
+  #jobsBtn { padding:14px 14px; font-size:16px; white-space:nowrap; }
+  .modal.jobs { background:var(--bg); }
+  .jobs-head { display:flex; gap:8px; align-items:center; padding:calc(12px + env(safe-area-inset-top)) 14px 8px; background:#fff; border-bottom:1px solid var(--line); }
+  .jobs-head h3 { margin:0; flex:1; font-size:19px; } .jobs-head .note { color:var(--mute); font-size:12px; font-weight:400; display:block; }
+  .jobs-head button { padding:8px 12px; }
+  .jobs-head button.spin { animation:spin .9s linear infinite; }
+  #jobsFilter { padding:8px 14px 0; margin:0; }
+  .chip.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  #jobsList { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:10px 12px calc(20px + env(safe-area-inset-bottom)); }
+  .job { background:#fff; border-radius:12px; padding:12px; margin-bottom:8px; box-shadow:0 1px 2px #0001; cursor:pointer; }
+  .job-top { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .job-top .when { margin-left:auto; color:var(--mute); font-size:13px; }
+  .job-main { font-size:15px; } .job .sub { color:var(--mute); font-size:13px; margin-top:2px; } .job .fail { color:var(--red); font-weight:600; }
+  .job-note { font-size:13px; margin-top:6px; color:#92400e; }
+  .job-more { display:none; font-size:13px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line); line-height:1.6; }
+  .job.open .job-more { display:block; } .job-more a { color:var(--red); font-weight:600; } .mute { color:var(--mute); }
+  .st { font-size:12px; font-weight:600; padding:3px 8px; border-radius:10px; }
+  .st-q { background:#dbeafe; color:#1e40af; } .st-s { background:#fef3c7; color:#92400e; }
+  .st-p { background:#dcfce7; color:#166534; } .st-a { background:#fee2e2; color:#991b1b; }
   .hint { color:var(--mute); font-size:13px; margin-top:6px; }
   .modal { position:fixed; inset:0; background:#000; z-index:10; display:none; flex-direction:column; }
   .modal.open { display:flex; }
@@ -186,7 +206,14 @@
 
 </main>
 
-<div id="sendBar"><button id="sendBtn" disabled>Create invoice</button></div>
+<div id="sendBar"><div class="sendrow"><button id="jobsBtn" class="secondary">📋 Jobs</button><button id="sendBtn" disabled>Create invoice</button></div></div>
+
+<!-- Jobs register -->
+<div id="jobsSheet" class="modal jobs">
+  <div class="jobs-head"><h3>Jobs <span id="jobsNote" class="note"></span></h3><button id="jobsRefresh" class="secondary" aria-label="Refresh">⟳</button><button id="jobsClose" class="secondary" aria-label="Close">✕</button></div>
+  <div id="jobsFilter" class="chips"></div>
+  <div id="jobsList"></div>
+</div>
 
 <!-- Crop editor -->
 <div id="cropper" class="modal">

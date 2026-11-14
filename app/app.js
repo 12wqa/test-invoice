@@ -2,7 +2,7 @@
 /* Test Invoice PWA — see README.md for the n8n contract. */
 
 const BUILD = self.BUILD_INFO || { version: 'dev' };
-const KEY = { settings: 'pi.settings', lookups: 'pi.lookups', sites: 'pi.sites', noInvoice: 'pi.noInvoice', emails: 'pi.emails', quote: 'pi.quote', quickOpen: 'pi.quickOpen' };
+const KEY = { settings: 'pi.settings', lookups: 'pi.lookups', sites: 'pi.sites', noInvoice: 'pi.noInvoice', emails: 'pi.emails', quote: 'pi.quote', quickOpen: 'pi.quickOpen', jobs: 'pi.jobs' };
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const validEmails = (s) => { const l = String(s).split(/[,;]/).map(x => x.trim()).filter(Boolean); return l.length > 0 && l.every(e => EMAIL_RE.test(e)); };
 const MAX_SIDE = 1600;            // px, longest edge of any uploaded image
@@ -509,6 +509,66 @@ function closeCrop() { $('cropper').classList.remove('open'); crop.src = null; }
 /* ---------- submit ---------- */
 const blobToDataUrl = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
 
+/* ---------- job register (Jobs screen) ---------- */
+// Server side: n8n data table 'Test Invoice Jobs' (submitted -> processed / attention), listed with action=listJobs.
+// Phone side: jobs still in the offline queue show as 'In queue'. Last list is kept for viewing offline.
+const JOB_STATUS = { queued: ['In queue', 'q'], submitted: ['Submitted', 's'], processed: ['Processed', 'p'], attention: ['Needs attention', 'a'] };
+let jobsFilter = 'all';
+async function openJobs() {
+  $('jobsSheet').classList.add('open');
+  await renderJobs(store.get(KEY.jobs, []));
+  refreshJobs();
+}
+async function refreshJobs() {
+  if (state.sample) { $('jobsNote').textContent = 'Sample mode — no register'; return; }
+  const s = settings();
+  $('jobsRefresh').classList.add('spin'); $('jobsNote').textContent = 'Updating…';
+  try {
+    const r = await fetch(s.url.replace(/\/$/, '') + '/photo-invoice-submit', {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+      body: JSON.stringify({ key: s.key || '', action: 'listJobs' })
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || !body.ok) throw new Error(body.error || 'HTTP ' + r.status);
+    store.set(KEY.jobs, body.jobs || []);
+    log('jobs', 'loaded', { count: (body.jobs || []).length });
+    await renderJobs(body.jobs || []);
+    $('jobsNote').textContent = 'Updated ' + new Date().toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' });
+  } catch (e) {
+    log('jobs', 'load failed', e.message);
+    $('jobsNote').textContent = 'No signal — showing the last saved list';
+  } finally { $('jobsRefresh').classList.remove('spin'); }
+}
+const when = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }); };
+async function renderJobs(server) {
+  const queued = QUEUE_OK ? await Q.all().catch(() => []) : [];
+  const ids = new Set(server.map(j => j.jobId));
+  const local = queued.filter(q => !ids.has(q.id)).map(q => ({
+    jobId: q.id, status: q.status === 'failed' ? 'attention' : 'queued', client: q.label.client, site: q.label.site,
+    mode: q.payload.mode, result: q.payload.result, quote: q.payload.quote, photos: q.payload.photos.length,
+    note: q.status === 'failed' ? 'Not accepted: ' + q.error : 'On this phone — sends when there’s signal', createdAt: new Date(q.createdAt).toISOString(), local: true
+  }));
+  const all = local.concat(server);
+  // A job still 'submitted' after 15 minutes has probably stopped part way - flag it.
+  for (const j of all) if (j.status === 'submitted' && Date.now() - new Date(j.createdAt) > 15 * 60000) { j.status = 'attention'; j.note = j.note || 'Still marked as submitted after 15 min — check n8n / Xero'; }
+  const count = (s) => all.filter(j => s === 'all' || j.status === s).length;
+  $('jobsFilter').innerHTML = [['all', 'All'], ['queued', 'In queue'], ['submitted', 'Submitted'], ['processed', 'Processed'], ['attention', 'Needs attention']]
+    .filter(([f]) => f === 'all' || count(f)).map(([f, label]) => `<button class="chip${jobsFilter === f ? ' on' : ''}" data-f="${f}">${label} ${count(f)}</button>`).join('');
+  const list = all.filter(j => jobsFilter === 'all' || j.status === jobsFilter);
+  $('jobsList').innerHTML = list.map(j => {
+    const [label, cls] = JOB_STATUS[j.status] || [j.status, 's'];
+    const bits = [j.result === 'fail' ? '<span class="fail">Fail</span>' : 'Pass', j.mode === 'email' ? 'email only' : 'invoice + email'];
+    if (j.invoiceNumber) bits.push(esc(j.invoiceNumber));
+    if (j.quoteNumber) bits.push('quote ' + esc(j.quoteNumber)); else if (j.quote) bits.push('quote requested');
+    const xero = j.invoiceId ? `<a href="https://go.xero.com/AccountsReceivable/Edit.aspx?InvoiceID=${encodeURIComponent(j.invoiceId)}" target="_blank" rel="noopener">Open ${esc(j.invoiceNumber || 'invoice')} in Xero</a>` : '';
+    return `<div class="job"><div class="job-top"><span class="st st-${cls}">${label}</span><span class="when">${when(j.createdAt)}</span></div>
+      <div class="job-main"><b>${esc(j.client)}</b> — ${esc(j.site)}</div>
+      <div class="sub">${bits.join(' · ')}</div>
+      ${j.note ? `<div class="job-note">${esc(j.note)}</div>` : ''}
+      <div class="job-more">${j.sentTo ? `Emailed to ${esc(j.sentTo)}<br>` : ''}${j.photos ? `${j.photos} photo${j.photos === 1 ? '' : 's'}<br>` : ''}${j.updatedAt && j.updatedAt !== j.createdAt ? `Last update ${when(j.updatedAt)}<br>` : ''}<span class="mute">Job ${esc(String(j.jobId).slice(0, 8))}</span>${xero ? '<br>' + xero : ''}</div></div>`;
+  }).join('') || `<div class="hint" style="padding:16px">${all.length ? 'Nothing in this filter.' : 'No jobs yet — they appear here once sent.'}</div>`;
+}
+
 /* ---------- sending + offline queue ---------- */
 // Jobs that can't be sent (no signal, or the send drops/times out) are saved on the phone in IndexedDB
 // and sent automatically when there's signal again. Each job keeps its own ID, so if a send actually got
@@ -652,7 +712,7 @@ async function flushQueue(manual = false) {
       }
     }
   } catch (e) { log('queue', 'flush failed', e.message); }
-  finally { flushing = false; renderQueue(); }
+  finally { flushing = false; renderQueue(); if ($('jobsSheet').classList.contains('open')) refreshJobs(); }
 }
 
 let qDelArm = '';
@@ -758,6 +818,14 @@ $('cropAuto').onclick = () => {
 $('cropUse').onclick = useCrop;
 
 $('sendBtn').onclick = submit;
+$('jobsBtn').onclick = openJobs;
+$('jobsClose').onclick = () => $('jobsSheet').classList.remove('open');
+$('jobsRefresh').onclick = refreshJobs;
+$('jobsFilter').addEventListener('click', e => { const f = e.target.dataset.f; if (!f) return; jobsFilter = f; renderJobs(store.get(KEY.jobs, [])); });
+$('jobsList').addEventListener('click', e => {
+  if (e.target.closest('a')) return;
+  const j = e.target.closest('.job'); if (j) j.classList.toggle('open');
+});
 $('resetBtn').onclick = newJob;
 $('syncBtn').onclick = syncNow;
 $('settingsBtn').onclick = () => { const s = settings(); $('setUrl').value = s.url; $('setKey').value = s.key; $('settings').classList.add('open'); };

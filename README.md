@@ -8,6 +8,11 @@ creates a Xero **draft** invoice (and optional draft quote) and emails the clien
 - API: n8n at https://n8n.12wqa.com - workflow **Test Invoice PWA API v1.0** (`UFrHbAiiA7kIjwey`)
   - `GET  /webhook/photo-invoice-lookups?key=…` → Xero customers + items + register sites
   - `POST /webhook/photo-invoice-submit` (text/plain JSON, key in body)
+    - `action: 'listJobs'` → latest 100 jobs from the register
+    - `action: 'saveQuickItems'` (admin key) → saves the quick-item tiles
+- Job register: n8n data table **Test Invoice Jobs** - each job is inserted as `submitted` when n8n accepts it and
+  updated to `processed` or `attention` (with the reason in `note`) when the invoice/email/quote steps finish.
+  The phone's 📋 Jobs screen also shows jobs still in its offline queue as `In queue`.
 
 ## How a change gets to the phone
 1. Edit files in `app/`, **bump the version** in `app/buildInfo.js` *and* line 1 of `app/sw.js` (same value).
