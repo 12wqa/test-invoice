@@ -137,10 +137,10 @@ function fuzzyScore(words, text) {
   }
   return total;
 }
-function fuzzyFilter(list, query, textOf) {
+function fuzzyFilter(list, query, textOf, boost) {
   const words = norm(query).split(' ').filter(Boolean);
   if (!words.length) return list;
-  return list.map(x => ({ x, s: fuzzyScore(words, norm(textOf(x))) }))
+  return list.map(x => { const s = fuzzyScore(words, norm(textOf(x))); return { x, s: s < 0 ? s : s + (boost ? boost(x) : 0) }; })
     .filter(r => r.s >= 0).sort((p, q) => q.s - p.s).map(r => r.x);
 }
 // Bold the parts of a label that literally match a typed word.
@@ -162,8 +162,8 @@ function makeCombo(o) {
   const input = $(o.input), list = $(o.list), clear = $(o.clear);
   const c = { input, list, open: false, rows: [] };
   c.show = () => {
-    const all = o.items();
-    const rows = fuzzyFilter(all, input.value, o.text);
+    const all = o.items(input.value);
+    const rows = fuzzyFilter(all, input.value, o.text, o.boost);
     const head = o.head ? o.head(input.value) : '';
     list.innerHTML = head + (rows.length
       ? rows.slice(0, MAX_ROWS).map((x, i) => `<div class="opt" data-i="${i}">${o.row(x, input.value)}</div>`).join('')
@@ -203,22 +203,42 @@ function setClient(id) {
   applyClientPrefs(); syncCombos(); validate();
 }
 
-// Client's register sites, with recently used ones (incl. typed addresses) first.
-function siteOptions() {
-  const sites = currentClient()?.sites || [];
+// Every register site across all clients, tagged with its client.
+function allSites() {
+  const out = [];
+  for (const c of state.lookups?.contacts || []) for (const s of c.sites || []) out.push(Object.assign({}, s, { clientId: c.id, clientName: c.name }));
+  return out;
+}
+// No client picked: search every site (picking one sets the client).
+// Client picked: its recent + register sites first; while typing, other clients' matching sites follow.
+function siteOptions(q) {
+  if (!state.contactId) return allSites();
+  const me = currentClient(), sites = me?.sites || [];
+  const tag = s => Object.assign({}, s, { clientId: state.contactId, clientName: me?.name || '' });
   const recent = (store.get(KEY.sites, {})[state.contactId] || []).map(r => {
     const id = (r.match(/\(([^()]+)\)$/) || [])[1] || '';
     const s = sites.find(x => x.id === id);
-    return s ? Object.assign({}, s, { recent: true }) : { id: '', name: r, search: r, recent: true };
+    return s ? Object.assign(tag(s), { recent: true }) : Object.assign(tag({ id: '', name: r, search: r }), { recent: true });
   });
-  return recent.concat(sites.filter(s => !recent.some(r => r.id && r.id === s.id)));
+  const own = recent.concat(sites.filter(s => !recent.some(r => r.id && r.id === s.id)).map(tag));
+  if (!String(q || '').trim()) return own;
+  return own.concat(allSites().filter(s => s.clientId !== state.contactId).map(s => Object.assign(s, { other: true })));
 }
 
 makeCombo({
   input: 'contactSearch', list: 'contactList', clear: 'contactClear',
   items: () => state.lookups?.contacts || [],
-  text: c => c.name + ' ' + (c.registerId || '') + ' ' + (c.email || ''),
-  row: (c, q) => `${highlight(c.name, q)}<div class="sub">${c.sites?.length ? plural(c.sites.length, 'site') : 'no register sites'}${c.id === state.contactId ? ' · selected' : ''}</div>`,
+  text: c => c.name + ' ' + (c.registerId || '') + ' ' + (c.email || '') + ' ' + (c.sites || []).map(s => s.search).join(' '),
+  boost: c => fuzzyScore(norm($('contactSearch').value).split(' ').filter(Boolean), norm(c.name)) >= 0 ? 500 : 0,
+  row: (c, q) => {
+    const w = norm(q).split(' ').filter(Boolean);
+    let via = '';
+    if (w.length && fuzzyScore(w, norm(c.name)) < 0) {
+      const s = (c.sites || []).find(x => fuzzyScore(w, norm(x.search)) >= 0);
+      if (s) via = ' · site: ' + highlight(s.name, q);
+    }
+    return `${highlight(c.name, q)}<div class="sub">${c.sites?.length ? plural(c.sites.length, 'site') : 'no register sites'}${via}${c.id === state.contactId ? ' · selected' : ''}</div>`;
+  },
   empty: (q, all) => all.length ? `No client matches "${q}"` : 'Clients not loaded yet',
   onType: () => { if (state.contactId) setClient(''); },
   pick: c => { $('contactSearch').value = c.name; setClient(c.id); }
@@ -227,13 +247,19 @@ makeCombo({
 makeCombo({
   input: 'site', list: 'siteList', clear: 'siteClear',
   items: siteOptions,
-  text: s => s.search || s.name,
-  row: (s, q) => `${highlight(s.name, q)}<div class="sub">${esc(s.id || 'typed address')}${s.recent ? ' · recent' : ''}</div>`,
+  text: s => (s.search || s.name) + ' ' + (s.clientName || ''),
+  boost: s => s.other ? 0 : 1000,
+  row: (s, q) => `${highlight(s.name, q)}<div class="sub">${esc(s.id || 'typed address')}${(!state.contactId || s.other) && s.clientName ? ' · ' + (s.other ? 'other client: ' : '') + highlight(s.clientName, q) : ''}${s.recent ? ' · recent' : ''}</div>`,
   head: q => q.trim() && !state.siteId ? `<div class="opt opt-free" data-free="1">Use “${esc(q.trim())}” as the site</div>` : '',
-  empty: (q, all) => !state.contactId ? 'Pick a client first, or just type the address'
-    : all.length ? 'No matching site — what you type will be used' : 'No register sites for this client — type the address',
+  empty: (q, all) => !all.length ? (state.contactId ? 'No register sites for this client — type the address' : 'Sites not loaded yet')
+    : 'No matching site — what you type will be used',
   onType: () => { state.siteId = ''; validate(); },
-  pick: s => { $('site').value = siteLabel(s); state.siteId = s.id || ''; validate(); }
+  pick: s => {
+    if (s.clientId && s.clientId !== state.contactId) { // a register site sets (or switches) the client
+      $('contactSearch').value = s.clientName; setClient(s.clientId); toast('Client: ' + s.clientName);
+    }
+    $('site').value = siteLabel(s); state.siteId = s.id || ''; syncCombos(); validate();
+  }
 });
 
 makeCombo({
@@ -249,7 +275,9 @@ function syncCombos() {
   const c = currentClient();
   if (c && document.activeElement !== $('contactSearch')) $('contactSearch').value = c.name;
   const n = c?.sites?.length || 0;
-  $('siteHint').textContent = !state.contactId || state.siteId ? '' : n ? `${plural(n, 'site')} for this client — tap the box to pick or search.` : 'No register sites for this client — type the address.';
+  $('siteHint').textContent = state.siteId ? ''
+    : !state.contactId ? 'Or search all sites here — picking a site fills in the client.'
+    : n ? `${plural(n, 'site')} for this client — tap to pick or search (other clients' sites show too).` : 'No register sites for this client — type the address, or search all sites.';
   [['contactSearch', 'contactClear'], ['site', 'siteClear'], ['itemSearch', 'itemClear']].forEach(([i, x]) => { $(x).hidden = !$(i).value; });
   for (const cb of combos) if (cb.open) cb.show();
 }
