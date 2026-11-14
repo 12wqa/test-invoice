@@ -27,7 +27,7 @@ const SAMPLE = {
 const newJobId = () => crypto.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2);
 // jobId stays the same until the job is sent or cleared, so pressing Send again
 // after a lost reply is recognised by n8n as the same job (no double email/invoice).
-const state = { lookups: null, sample: true, photos: [], qty: {}, result: '', contactId: '', siteId: '', jobId: newJobId() };
+const state = { lookups: null, sample: true, photos: [], qty: {}, result: '', contactId: '', siteId: '', locId: '', jobId: newJobId() };
 const $ = (id) => document.getElementById(id);
 const money = (n) => '$' + n.toFixed(2);
 const log = (where, msg, data) => console.log(`[${where}] ${msg}`, data ?? '');
@@ -212,6 +212,7 @@ function makeCombo(o) {
   list.addEventListener('click', e => {
     const el = e.target.closest('.opt'); if (!el) return;
     if (el.dataset.free) { c.close(); input.blur(); return; } // "use what I typed"
+    if (el.dataset.add) { c.close(); input.blur(); if (o.onAdd) o.onAdd(input.value); return; }
     pick(c.rows[+el.dataset.i]);
   });
   clear.addEventListener('click', () => { input.value = ''; clear.hidden = true; if (o.onType) o.onType(''); input.focus(); c.show(); });
@@ -223,12 +224,13 @@ document.addEventListener('pointerdown', e => {
 });
 
 const currentClient = () => (state.lookups?.contacts || []).find(c => c.id === state.contactId);
-const siteLabel = (s) => s.id ? `${s.name} (${s.id})` : s.name;
+// Sites show their AFS location number. s.id is the register row key (old Uptick P-numbers stay hidden).
+const siteLabel = (s) => (s.loc || s.id) ? `${s.name} (${s.loc || s.id})` : s.name;
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 function setClient(id) {
   if (id === state.contactId) return;
-  state.contactId = id; $('site').value = ''; state.siteId = '';
+  state.contactId = id; $('site').value = ''; state.siteId = ''; state.locId = '';
   log('client', 'set', { id });
   applyClientPrefs(); syncCombos(); validate();
 }
@@ -247,10 +249,11 @@ function siteOptions(q) {
   const tag = s => Object.assign({}, s, { clientId: state.contactId, clientName: me?.name || '' });
   const recent = (store.get(KEY.sites, {})[state.contactId] || []).map(r => {
     const id = (r.match(/\(([^()]+)\)$/) || [])[1] || '';
-    const s = sites.find(x => x.id === id);
+    const s = sites.find(x => x.loc === id || x.id === id); // old recents end in (P-xxxx), new ones in (AFS-xxxx)
     return s ? Object.assign(tag(s), { recent: true }) : Object.assign(tag({ id: '', name: r, search: r }), { recent: true });
   });
-  const own = recent.concat(sites.filter(s => !recent.some(r => r.id && r.id === s.id)).map(tag));
+  const own = recent.filter((r, i) => !r.id || recent.findIndex(x => x.id === r.id) === i)
+    .concat(sites.filter(s => !recent.some(r => r.id && r.id === s.id)).map(tag));
   if (!String(q || '').trim()) return own;
   return own.concat(allSites().filter(s => s.clientId !== state.contactId).map(s => Object.assign(s, { other: true })));
 }
@@ -279,17 +282,19 @@ makeCombo({
   items: siteOptions,
   text: s => (s.search || s.name) + ' ' + (s.clientName || ''),
   boost: s => s.other ? 0 : 1000,
-  row: (s, q) => `${highlight(s.name, q)}<div class="sub">${esc(s.id || 'typed address')}${(!state.contactId || s.other) && s.clientName ? ' · ' + (s.other ? 'other client: ' : '') + highlight(s.clientName, q) : ''}${s.recent ? ' · recent' : ''}</div>`,
-  head: q => q.trim() && !state.siteId ? `<div class="opt opt-free" data-free="1">Use “${esc(q.trim())}” as the site</div>` : '',
+  row: (s, q) => `${highlight(s.name, q)}<div class="sub">${esc(s.loc || (s.id ? '' : 'typed address'))}${s.annual ? ' · yearly ' + esc(s.annual) : ''}${(!state.contactId || s.other) && s.clientName ? ' · ' + (s.other ? 'other client: ' : '') + highlight(s.clientName, q) : ''}${s.recent ? ' · recent' : ''}</div>`,
+  head: q => (q.trim() && !state.siteId ? `<div class="opt opt-free" data-free="1">Use “${esc(q.trim())}” as the site (this job only)</div>` : '')
+    + `<div class="opt opt-add" data-add="1">+ Add new site to the register</div>`,
   empty: (q, all) => !all.length ? (state.contactId ? 'No register sites for this client — type the address' : 'Sites not loaded yet')
     : 'No matching site — what you type will be used',
-  onType: () => { state.siteId = ''; validate(); },
+  onType: () => { state.siteId = ''; state.locId = ''; validate(); },
   pick: s => {
     if (s.clientId && s.clientId !== state.contactId) { // a register site sets (or switches) the client
       $('contactSearch').value = s.clientName; setClient(s.clientId); toast('Client: ' + s.clientName);
     }
-    $('site').value = siteLabel(s); state.siteId = s.id || ''; syncCombos(); validate();
-  }
+    $('site').value = siteLabel(s); state.siteId = s.id || ''; state.locId = s.loc || ''; syncCombos(); validate();
+  },
+  onAdd: q => openAddSite(q)
 });
 
 makeCombo({
@@ -506,6 +511,54 @@ async function useCrop() {
 
 function closeCrop() { $('cropper').classList.remove('open'); crop.src = null; }
 
+/* ---------- add a new site (register + report site list) ---------- */
+// Server gives it an AFS number: same street address as a site on file = joins that site (one site, many clients).
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function openAddSite(q) {
+  const c = currentClient();
+  $('asClient').textContent = c ? c.name : 'Pick the client first (step 1), then add the site.';
+  $('asClient').classList.toggle('warn', !c);
+  const typed = String(q || '').replace(/\s*\((AFS|P)-[^)]*\)\s*$/, '').trim();
+  $('asAddress').value = /^\d/.test(typed) ? typed : '';
+  $('asName').value = /^\d/.test(typed) ? '' : typed;
+  $('asSuburb').value = ''; $('asPostcode').value = ''; $('asMonth').value = '';
+  $('asSave').disabled = !c;
+  $('addSite').classList.add('open');
+  log('addSite', 'open', { client: c?.name, typed });
+  setTimeout(() => (c ? ($('asAddress').value ? $('asSuburb') : $('asAddress')) : $('contactSearch')).focus(), 250);
+}
+async function saveAddSite() {
+  const c = currentClient();
+  if (!c) { toast('Pick the client first'); return; }
+  const site = { address: $('asAddress').value.trim(), suburb: $('asSuburb').value.trim(), postcode: $('asPostcode').value.trim(), name: $('asName').value.trim(), month: $('asMonth').value };
+  if (!/^\d/.test(site.address)) { toast('Street address should start with the number, e.g. 10 Essex St'); $('asAddress').focus(); return; }
+  if (!site.suburb) { toast('Add the suburb'); $('asSuburb').focus(); return; }
+  log('addSite', 'save', { client: c.name, site });
+  if (state.sample) {
+    const s = { id: 'NEW-' + Date.now(), loc: 'AFS-NEW', annual: site.month, name: site.name || site.address + ', ' + site.suburb };
+    s.search = [s.loc, s.name, site.address, site.suburb].join(' ').toLowerCase();
+    (c.sites = c.sites || []).push(s); $('addSite').classList.remove('open');
+    pickNewSite(s); toast('Sample mode: site added on this phone only'); return;
+  }
+  if (navigator.onLine === false) { toast('Adding a site needs signal — use “Use … as the site” for now', 4500); return; }
+  busy(true, 'Adding site…');
+  try {
+    const body = await postJob({ action: 'addSite', site, contact: { id: c.id, name: c.name, registerId: c.registerId || '' } });
+    $('addSite').classList.remove('open');
+    await loadLookups(true, true);
+    const s = (currentClient()?.sites || []).find(x => x.id === body.site?.id) || Object.assign({ search: '' }, body.site);
+    pickNewSite(s);
+    toast((body.message || 'Site added') + (body.warning ? ' — ' + body.warning : ''), body.warning ? 7000 : 4500);
+  } catch (e) {
+    log('addSite', 'failed', e.message);
+    toast('Site not added — ' + (e.network ? 'no signal' : e.message), 6000);
+  } finally { busy(false); }
+}
+function pickNewSite(s) {
+  $('site').value = siteLabel(s); state.siteId = s.id || ''; state.locId = s.loc || '';
+  syncCombos(); validate();
+}
+
 /* ---------- submit ---------- */
 const blobToDataUrl = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
 
@@ -642,7 +695,7 @@ async function submit() {
       submissionId: state.jobId,
       date: stamp,
       contact: { id: contactId, name: contact?.name },
-      site, siteId: state.siteId, reference: site,
+      site, siteId: state.siteId, locationId: state.locId, reference: site,
       lineAmountTypes: 'Exclusive',
       mode: emailMode() ? 'email' : 'xero',
       clientEmail: $('clientEmail').value.trim(),
@@ -741,7 +794,7 @@ function rememberSite(contactId, site) {
 function resetJob() {
   state.photos.forEach(p => URL.revokeObjectURL(p.url));
   state.photos = []; state.qty = {}; state.result = ''; state.jobId = newJobId();
-  $('site').value = ''; state.siteId = '';
+  $('site').value = ''; state.siteId = ''; state.locId = '';
   $('wantQuote').checked = false; $('quoteNote').value = '';
   render();
 }
@@ -837,6 +890,8 @@ $('setSave').onclick = () => {
   store.set(KEY.settings, { url: $('setUrl').value.trim(), key: $('setKey').value.trim() });
   $('settings').classList.remove('open'); state.qty = {}; loadLookups(true);
 };
+$('asCancel').onclick = () => $('addSite').classList.remove('open');
+$('asSave').onclick = saveAddSite;
 $('setRefresh').onclick = () => { $('settings').classList.remove('open'); loadLookups(true); };
 
 /* ---------- service worker + update banner ---------- */

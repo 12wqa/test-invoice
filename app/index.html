@@ -42,6 +42,10 @@
   .opt .sub { color:var(--mute); font-size:13px; margin-top:2px; }
   .opt mark { background:#fde68a; color:inherit; padding:0 1px; border-radius:3px; }
   .opt-free { color:var(--red); font-weight:600; }
+  .opt-add { color:#1d4ed8; font-weight:600; }
+  #asClient { font-weight:600; }
+  #asClient.warn { color:var(--red); }
+  #addSite { background:#000a; overflow:auto; }
   .opt-row { display:flex; align-items:center; gap:8px; } .opt-row > span { flex:1; }
   .badge { background:var(--ink); color:#fff; font-size:13px; padding:2px 8px; border-radius:10px; }
   .opt-more { padding:12px 14px; color:var(--mute); font-size:14px; }
@@ -158,7 +162,7 @@
   <section class="card">
     <h2>2 · Site</h2>
     <div class="combo">
-      <input id="site" type="text" placeholder="Search sites (name, address, P-number)…" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <input id="site" type="text" placeholder="Search sites (name, address, AFS no.)…" autocomplete="off" autocapitalize="off" spellcheck="false">
       <button id="siteClear" class="combo-clear" type="button" aria-label="Clear" hidden>×</button>
       <div id="siteList" class="combo-list" hidden></div>
     </div>
@@ -223,6 +227,34 @@
     <button id="cropAuto" class="secondary">Auto</button>
     <label><input id="cropEnhance" type="checkbox" checked> B&amp;W</label>
     <button id="cropUse" style="background:var(--red)">Use</button>
+  </div>
+</div>
+
+<!-- Add a new site -->
+<div id="addSite" class="modal">
+  <div class="sheet">
+    <h3>Add new site</h3>
+    <div class="hint">Client: <span id="asClient"></span></div>
+    <label>Street address
+      <input id="asAddress" type="text" placeholder="10 Essex St" autocomplete="off">
+    </label>
+    <label>Suburb
+      <input id="asSuburb" type="text" placeholder="Footscray" autocomplete="off">
+    </label>
+    <label>Postcode
+      <input id="asPostcode" type="text" inputmode="numeric" maxlength="4" placeholder="3011" autocomplete="off">
+    </label>
+    <label>Site name (optional)
+      <input id="asName" type="text" placeholder="e.g. building or complex name" autocomplete="off">
+    </label>
+    <label>Yearly (annual) test month
+      <select id="asMonth"><option value="">Not sure yet</option><option>Jan</option><option>Feb</option><option>Mar</option><option>Apr</option><option>May</option><option>Jun</option><option>Jul</option><option>Aug</option><option>Sep</option><option>Oct</option><option>Nov</option><option>Dec</option></select>
+    </label>
+    <div class="hint">Gets an AFS number. If the address is already on the register for another client, it joins that site.</div>
+    <div class="row">
+      <button id="asCancel" class="secondary">Cancel</button>
+      <button id="asSave">Add site</button>
+    </div>
   </div>
 </div>
 

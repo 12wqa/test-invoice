@@ -59,3 +59,15 @@ After every job the API workflow hands the job to **Test Invoice Drive Filer v1.
 The folder link and a status (`filed`, `filed, N file(s) missing`, `not filed: ...`) go into the jobs register (`driveUrl`, `driveStatus`) and show on the phone Jobs screen.
 
 To file somewhere else, change `rootId` in the filer's **Settings** node. To use different storage (Unraid share, S3, OneDrive), replace only the filer workflow: it receives one JSON job (fields + base64 photos) and nothing else depends on Drive.
+
+## Site numbers and adding sites (v8.0)
+
+Every physical address has one **AFS number** (`AFS-0001`…), kept in the register Sites tab column **Location ID** (and Site_List column H). One AFS site can have many clients (one register row per client). The app shows AFS numbers only; the old Uptick P-numbers stay in the register's **Site ID** column as hidden row keys and still match when searched.
+
+**+ Add new site to the register** sits at the top of the site search. It needs the client picked first and signal. The API (`action: addSite`) then:
+
+- same client already at that address → nothing written (re-activates the row if it was switched off)
+- address already on file for another client → new register row with that site's AFS number (joins the site)
+- new address → next AFS number, new register row **and** a new Site_List row for the report automation
+
+The yearly (annual) month is optional; set it later in the register (column **Annual month**) if unsure. Jobs send `locationId`, and the Drive job summary shows the AFS number.
