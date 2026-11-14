@@ -559,33 +559,61 @@ function pickNewSite(s) {
   syncCombos(); validate();
 }
 
-/* ---------- tidy the quote note with an AI model (via n8n) ---------- */
-// Pick Haiku / Kimi / ChatGPT (whichever has credits). If it fails, the others are tried in turn.
+/* ---------- quote items + tidy with an AI model (via n8n) ---------- */
+// One box per quote item (talk each one in). Each item = one no-price line on the Xero draft quote.
+// Tidy: pick Haiku / Kimi / ChatGPT (whichever has credits). If it fails, the others are tried in turn.
 const TIDY = { haiku: 'Haiku', kimi: 'Kimi', chatgpt: 'ChatGPT' };
 const KEY_TIDY = 'pi.tidyModel';
-let tidyPrev = null;
+let quoteItems = [''];
+let tidyPrev = null; // snapshot of the items before the last tidy (for Undo)
 function tidyModel() { const m = store.get(KEY_TIDY, 'haiku'); return TIDY[m] ? m : 'haiku'; }
 document.querySelectorAll('input[name=tidyModel]').forEach(r => {
   r.checked = r.value === tidyModel();
   r.addEventListener('change', () => { if (r.checked) { store.set(KEY_TIDY, r.value); log('tidy', 'model set', r.value); } });
 });
-async function tidyNote() {
-  const text = $('quoteNote').value.trim();
-  if (!text) { toast('Say or type what the quote is for first'); $('quoteNote').focus(); return; }
+const quoteText = () => quoteItems.map(s => String(s || '').trim()).filter(Boolean).join('\n').slice(0, 2000);
+function renderQuoteItems(focus) {
+  $('quoteItems').innerHTML = quoteItems.map((v, i) => `<div class="qi">
+    <span class="qi-n">${i + 1}</span>
+    <textarea rows="2" maxlength="600" data-qi="${i}" placeholder="${i ? 'Next item…' : 'What’s the quote for? Tap the keyboard mic and talk'}">${esc(v)}</textarea>
+    <div class="qi-btns"><button class="secondary" type="button" data-qtidy="${i}" aria-label="Tidy this item">✨</button>${quoteItems.length > 1 ? `<button class="secondary" type="button" data-qdel="${i}" aria-label="Remove this item">✕</button>` : ''}</div>
+  </div>`).join('');
+  if (focus !== undefined) { const t = $('quoteItems').querySelector(`[data-qi="${focus}"]`); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }
+}
+$('quoteItems').addEventListener('input', e => { const i = e.target.dataset.qi; if (i !== undefined) quoteItems[+i] = e.target.value; });
+$('quoteItems').addEventListener('click', e => {
+  const d = e.target.closest('[data-qdel]'); const t = e.target.closest('[data-qtidy]');
+  if (d) { quoteItems.splice(+d.dataset.qdel, 1); if (!quoteItems.length) quoteItems = ['']; renderQuoteItems(); }
+  if (t) tidyItems(+t.dataset.qtidy);
+});
+$('quoteAdd').onclick = () => {
+  if (quoteItems.length && !String(quoteItems[quoteItems.length - 1]).trim()) { renderQuoteItems(quoteItems.length - 1); return; } // reuse the empty last box
+  quoteItems.push(''); renderQuoteItems(quoteItems.length - 1); log('quote', 'item added', quoteItems.length);
+};
+function resetQuoteItems() { quoteItems = ['']; tidyPrev = null; $('tidyUndo').hidden = true; renderQuoteItems(); }
+
+// which = index of one item, or undefined for all. Tidied lines replace that item (or all items); extra lines become new items.
+async function tidyItems(which) {
+  const idx = which === undefined ? quoteItems.map((_, i) => i) : [which];
+  const text = idx.map(i => String(quoteItems[i] || '').trim()).filter(Boolean).join('\n');
+  if (!text) { toast('Say or type the item first'); renderQuoteItems(which === undefined ? 0 : which); return; }
   if (state.sample) { toast('Sample mode — tidy is not sent anywhere'); return; }
   if (navigator.onLine === false) { toast('Tidy needs signal — what you said will be used as it is'); return; }
   const first = tidyModel();
   const order = [first].concat(Object.keys(TIDY).filter(m => m !== first));
-  busy(true, `Tidying with ${TIDY[first]}…`);
   const failed = [];
   try {
     for (const model of order) {
       busy(true, `Tidying with ${TIDY[model]}…`);
       try {
         const body = await postJob({ action: 'tidyNote', model, text });
-        if (!body.text) throw new Error('nothing came back');
-        tidyPrev = $('quoteNote').value; $('quoteNote').value = body.text; $('tidyUndo').hidden = false;
-        log('tidy', 'done', { model, failed });
+        const lines = String(body.text || '').split('\n').map(l => l.trim()).filter(Boolean);
+        if (!lines.length) throw new Error('nothing came back');
+        tidyPrev = quoteItems.slice(); $('tidyUndo').hidden = false;
+        if (which === undefined) quoteItems = lines;
+        else quoteItems.splice(which, 1, ...lines);
+        renderQuoteItems();
+        log('tidy', 'done', { model, which, lines: lines.length, failed });
         toast(failed.length ? `${failed.join(', ')} didn't answer — tidied with ${TIDY[model]}` : `Tidied with ${TIDY[model]} — check it, edit if needed`, failed.length ? 5000 : 3000);
         return;
       } catch (e) {
@@ -597,8 +625,9 @@ async function tidyNote() {
     toast('None of the models could tidy it (credits?) — what you said will be used as it is', 6000);
   } finally { busy(false); }
 }
-$('tidyBtn').onclick = tidyNote;
-$('tidyUndo').onclick = () => { if (tidyPrev === null) return; $('quoteNote').value = tidyPrev; tidyPrev = null; $('tidyUndo').hidden = true; };
+$('tidyBtn').onclick = () => tidyItems();
+$('tidyUndo').onclick = () => { if (!tidyPrev) return; quoteItems = tidyPrev; tidyPrev = null; $('tidyUndo').hidden = true; renderQuoteItems(); };
+renderQuoteItems();
 
 /* ---------- submit ---------- */
 const blobToDataUrl = (b) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(b); });
@@ -742,7 +771,7 @@ async function submit() {
       clientEmail: $('clientEmail').value.trim(),
       result: state.result,
       quote: $('wantQuote').checked,
-      quoteNote: $('wantQuote').checked ? $('quoteNote').value.trim().slice(0, 2000) : '',
+      quoteNote: $('wantQuote').checked ? quoteText() : '',
       lines: emailMode() ? [] : lines(),
       photos
     };
@@ -836,7 +865,7 @@ function resetJob() {
   state.photos.forEach(p => URL.revokeObjectURL(p.url));
   state.photos = []; state.qty = {}; state.result = ''; state.jobId = newJobId();
   $('site').value = ''; state.siteId = ''; state.locId = '';
-  $('wantQuote').checked = false; $('quoteNote').value = ''; tidyPrev = null; $('tidyUndo').hidden = true;
+  $('wantQuote').checked = false; resetQuoteItems();
   render();
 }
 
@@ -866,7 +895,7 @@ $('ver').textContent = BUILD.version;
 $('noInvoice').addEventListener('change', () => { saveClientPrefs(); renderMode(); });
 $('clientEmail').addEventListener('input', validate);
 document.querySelectorAll('button.result').forEach(b => b.addEventListener('click', () => { state.result = b.dataset.result; log('result', 'set', state.result); renderMode(); }));
-$('wantQuote').addEventListener('change', () => { log('quote', 'set', $('wantQuote').checked); renderMode(); if ($('wantQuote').checked) $('quoteNote').focus(); });
+$('wantQuote').addEventListener('change', () => { log('quote', 'set', $('wantQuote').checked); renderMode(); if ($('wantQuote').checked) renderQuoteItems(0); });
 $('quickToggle').addEventListener('click', () => { store.set(KEY.quickOpen, !store.get(KEY.quickOpen, true)); renderQuick(); });
 $('quickGrid').addEventListener('click', e => {
   const dec = e.target.closest('[data-qdec]'), tile = e.target.closest('[data-qadd]');

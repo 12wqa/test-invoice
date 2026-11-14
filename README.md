@@ -77,3 +77,7 @@ The yearly (annual) month is optional; set it later in the register (column **An
 The quote note is a text box: tap the keyboard mic and talk. **✨ Tidy** sends it to n8n (`action: tidyNote`), which asks the picked model (Haiku via the Anthropic key, Kimi via OpenRouter, ChatGPT via the OpenAI key) to turn it into short scope lines without adding anything. The picked model is remembered on the phone; if it fails (no credits) the app tries the others. **↩ Undo** puts back what you said. Without signal the note goes as typed.
 
 Each line of the note becomes its own description-only line on the Xero draft quote (no quantity or price), so you just price them in Xero. Model names are in **Parse & Check** (`MODELS`); to swap one, change it there (and the matching **Ask …** node's credential if the provider changes).
+
+## Quote items (v10.0)
+
+The quote is a list of boxes, one per item: talk one in, tap **+ Add another item**, talk the next. ✕ removes an item. ✨ on an item tidies just that one (if the model splits it, the extra lines become new items); **✨ Tidy all** tidies the lot; **↩ Undo tidy** puts back the last tidy. Sent to n8n as the same `quoteNote` (one item per line), so no server change.
