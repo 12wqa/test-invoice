@@ -20,7 +20,10 @@
   header h1 { margin:0; font-size:20px; }
   #ver { position:absolute; top:6px; left:8px; font-size:10px; opacity:.8; }
   #settingsBtn { position:absolute; right:10px; top:24px; background:none; border:0; color:#fff; font-size:22px; }
-  #resetBtn { position:absolute; right:52px; top:26px; background:#fff3; border:0; color:#fff; font-size:14px; padding:6px 10px; border-radius:14px; }
+  #syncBtn { position:absolute; right:48px; top:29px; background:none; border:0; color:#fff; font-size:22px; padding:2px 8px; line-height:1; }
+  #syncBtn.spin { animation:spin .9s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #resetBtn { position:absolute; right:92px; top:26px; background:#fff3; border:0; color:#fff; font-size:14px; padding:6px 10px; border-radius:14px; }
   #modeTag { font-size:12px; background:#fff3; padding:2px 8px; border-radius:10px; margin-left:6px; }
   #modeTag:empty { display:none; }
   .toggle { display:flex; gap:10px; align-items:center; font-size:16px; }
@@ -118,6 +121,7 @@
   <span id="ver"></span>
   <h1>Test Invoice <span id="modeTag"></span></h1>
   <button id="resetBtn">↺ New job</button>
+  <button id="syncBtn" aria-label="Sync" title="Sync: clients, items, waiting jobs, app update">⟳</button>
   <button id="settingsBtn" aria-label="Settings">⚙︎</button>
 </header>
 

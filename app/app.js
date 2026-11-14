@@ -71,7 +71,7 @@ function toast(msg, ms = 2500) {
 const busy = (on, msg = 'Sending…') => { $('busy').textContent = msg; $('busy').style.display = on ? 'flex' : 'none'; };
 
 /* ---------- lookups (Xero contacts + items via n8n) ---------- */
-async function loadLookups(force = false) {
+async function loadLookups(force = false, quiet = false) {
   const s = settings();
   state.sample = !s.url;
   $('modeTag').textContent = state.sample ? 'SAMPLE' : '';
@@ -93,12 +93,42 @@ async function loadLookups(force = false) {
     if (!Array.isArray(data.contacts) || !Array.isArray(data.items)) throw new Error('Bad lookups shape');
     data.contacts.sort((a, b) => a.name.localeCompare(b.name));
     state.lookups = data; store.set(KEY.lookups, data); render();
-    if (force) toast('Clients & items updated');
+    if (force && !quiet) toast('Clients & items updated');
+    return { ok: true, contacts: data.contacts.length, items: data.items.length };
   } catch (e) {
     log('loadLookups', 'failed', e.message);
     if (!state.lookups) { state.lookups = { contacts: [], items: [] }; render(); }
-    toast(cached ? 'Offline — using saved list' : 'Could not load clients: ' + e.message, 4000);
+    if (!quiet) toast(cached ? 'Offline — using saved list' : 'Could not load clients: ' + e.message, 4000);
+    return { ok: false, error: e.message, cached: !!cached };
   }
+}
+
+// Sync button: newer app version? -> reload into it. Otherwise refresh clients/sites/items/quick items
+// and send any queued jobs, then say what happened.
+let syncing = false;
+async function syncNow() {
+  if (syncing) return;
+  syncing = true; $('syncBtn').classList.add('spin'); log('sync', 'start');
+  let newer = '';
+  try {
+    if (navigator.onLine !== false && !state.sample) {
+      try {
+        const r = await fetch('buildInfo.js?t=' + Date.now(), { cache: 'no-store' });
+        const live = ((await r.text()).match(/version:\s*'([^']+)'/) || [])[1];
+        log('sync', 'version check', { running: BUILD.version, live });
+        if (live && live !== BUILD.version && !state.photos.length) {
+          toast(`Updating to ${live}\u2026`); setTimeout(() => location.reload(), 600); return;
+        }
+        if (live && live !== BUILD.version) newer = live; // job in progress: don't reload, mention it below
+      } catch (e) { log('sync', 'version check failed', e.message); }
+    }
+    const res = await loadLookups(true, true);
+    await flushQueue(true);
+    const waiting = QUEUE_OK ? (await Q.all().catch(() => [])).length : 0;
+    const extra = newer ? ` \u2014 new version ${newer} loads once this job is sent (tap \u27f3 again then)` : '';
+    if (res && res.ok) toast(`Synced \u2713 ${res.contacts} clients \u00b7 ${res.items} items` + (waiting ? ` \u00b7 ${waiting} job${waiting === 1 ? '' : 's'} still waiting` : '') + extra, newer ? 6000 : 3500);
+    else if (res) toast((res.cached ? 'No signal \u2014 using the saved list' : 'Could not sync: ' + res.error) + (waiting ? ` \u00b7 ${waiting} waiting` : ''), 4500);
+  } finally { syncing = false; $('syncBtn').classList.remove('spin'); }
 }
 
 /* ---------- render ---------- */
@@ -729,6 +759,7 @@ $('cropUse').onclick = useCrop;
 
 $('sendBtn').onclick = submit;
 $('resetBtn').onclick = newJob;
+$('syncBtn').onclick = syncNow;
 $('settingsBtn').onclick = () => { const s = settings(); $('setUrl').value = s.url; $('setKey').value = s.key; $('settings').classList.add('open'); };
 $('setClose').onclick = () => $('settings').classList.remove('open');
 $('setSave').onclick = () => {
