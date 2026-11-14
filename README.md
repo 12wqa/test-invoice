@@ -106,3 +106,10 @@ Placement: yearly in the **Annual month**; 6-monthly six months later; monthly i
 - **Coordinates:** register columns **AC Lat / AD Lng** (filled 14 Nov 2026 from the CheckMarks sites export: 225 by Sites JSON ID, 32 by address, 1 from the same AFS site). New sites need Lat/Lng typed in (or another fill run).
 - **Map key:** Mapbox *public* token (`pk.`), pasted once on the map (saved in that browser only, never in the code). Restrict it to `https://invoice.12wqa.com` in the Mapbox account.
 - **No lock-in:** the map library is MapLibre GL (open source, BSD, vendored in `app/vendor/maplibre`, v4.7.1). Mapbox only supplies the background tiles (`TILE_URL` in `visits.js`); swap that one line to change provider.
+
+## Phone map (v14.0)
+- **🗺** in the app header opens a full-screen map of active site/client rows (grouped circles, coloured by this month's status). It finds where you are once (locate button to refresh).
+- **Search** by site, address, suburb, client or AFS number; with no search text it lists the **nearest** sites. Results show the distance.
+- Tap a pin or result → card with each client at that address and this month's visit → **🧭 Navigate** (Apple Maps / Google Maps / Waze links, driving) or **Use for this job** (sets client + site like the site box).
+- Map data is cached on the phone (`pi.mapData`) so pins and search still work with no signal (background tiles need signal). The Mapbox key is pasted once per phone/browser (`pi.mapboxToken`).
+- Code: `app/app-map.js`. Tech debt: map setup and grouping are duplicated from `visits.js`; fold into one shared file next time either changes.

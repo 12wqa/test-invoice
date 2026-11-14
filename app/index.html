@@ -131,6 +131,21 @@
   .st-q { background:#dbeafe; color:#1e40af; } .st-s { background:#fef3c7; color:#92400e; }
   .st-p { background:#dcfce7; color:#166534; } .st-a { background:#fee2e2; color:#991b1b; }
   .hint { color:var(--mute); font-size:13px; margin-top:6px; }
+  .modal.mapm { background:#e5e7eb; }
+  .mapTop { display:flex; gap:8px; padding:calc(10px + env(safe-area-inset-top)) 10px 8px; background:#fff; border-bottom:1px solid var(--line); z-index:2; }
+  .mapTop input { flex:1; min-width:0; font-size:17px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; }
+  .mapTop button { padding:8px 14px; font-size:18px; }
+  #mapRes { position:absolute; left:10px; right:10px; top:calc(64px + env(safe-area-inset-top)); background:#fff; border-radius:12px; box-shadow:0 6px 20px #0003; z-index:3; max-height:55vh; overflow-y:auto; }
+  #mapRes .mr { padding:11px 14px; border-bottom:1px solid var(--line); cursor:pointer; } #mapRes .mr:last-child { border-bottom:0; }
+  #mapRes .mr .sub { color:var(--mute); font-size:13px; } #mapRes .mh { padding:8px 14px; font-size:12px; color:var(--mute); background:#f4f4f5; }
+  #pmap { flex:1; position:relative; }
+  .mapCard { position:absolute; left:8px; right:8px; bottom:calc(8px + env(safe-area-inset-bottom)); background:#fff; border-radius:14px; box-shadow:0 -2px 20px #0003; padding:14px; z-index:3; max-height:60vh; overflow-y:auto; }
+  .mapCard .mc-row { padding:8px 0; border-top:1px solid var(--line); } .mapCard .mc-row:first-of-type { border-top:0; padding-top:0; }
+  .mapCard .mc-name { font-weight:700; font-size:16px; } .mapCard .sub { color:var(--mute); font-size:13px; }
+  .mapCard .mc-btns { display:flex; gap:8px; margin-top:10px; } .mapCard .mc-btns button, .mapCard .mc-btns a { flex:1; text-align:center; }
+  .mapCard .nav { display:grid; gap:8px; margin-top:10px; } .mapCard .nav a { display:block; text-align:center; padding:13px; border-radius:10px; background:var(--ink); color:#fff; text-decoration:none; font-weight:600; font-size:16px; }
+  .mapCard .x { position:absolute; top:8px; right:10px; background:none; border:0; font-size:20px; color:var(--mute); padding:4px; }
+  .mclus { border-radius:50%; display:flex; align-items:center; justify-content:center; font:700 13px system-ui, sans-serif; border:2px solid #fff; box-shadow:0 1px 4px #0005; }
   .modal { position:fixed; inset:0; background:#000; z-index:10; display:none; flex-direction:column; }
   .modal.open { display:flex; }
   #cropWrap { flex:1; position:relative; touch-action:none; }
@@ -166,6 +181,7 @@
   <span id="ver"></span>
   <h1>Test Invoice <span id="modeTag"></span></h1>
   <button id="resetBtn">↺ New job</button>
+  <button id="mapBtn" aria-label="Map" title="Map of sites - search, navigate">🗺</button>
   <button id="syncBtn" aria-label="Sync" title="Sync: clients, items, waiting jobs, app update">⟳</button>
   <button id="settingsBtn" aria-label="Settings">⚙︎</button>
 </header>
@@ -265,6 +281,23 @@
 </div>
 
 <!-- Visit details (tap a month in the site strip) -->
+<!-- Sites map: search or tap a pin, then Navigate (Apple / Google / Waze) or use the site for this job -->
+<div id="mapSheet" class="modal mapm">
+  <div class="mapTop">
+    <input id="mapQ" type="search" placeholder="Search site, address, client…" autocomplete="off">
+    <button id="mapClose" class="secondary" aria-label="Close map">✕</button>
+  </div>
+  <div id="mapRes" hidden></div>
+  <div id="pmap"></div>
+  <div id="pmapKey" class="mapCard" hidden>
+    <b>Mapbox public key needed</b>
+    <p class="hint">Paste your Mapbox <b>public</b> token (starts pk.). Saved on this phone only. Never a secret sk. token.</p>
+    <input id="pmapKeyInput" type="password" placeholder="pk.…" autocomplete="off">
+    <button id="pmapKeySave" type="button">Save</button>
+  </div>
+  <div id="mapCard" class="mapCard" hidden></div>
+</div>
+
 <div id="visitSheet" class="modal">
   <div class="sheet">
     <div id="visitBody"></div>
@@ -328,5 +361,6 @@
 <script src="geometry.js"></script>
 <script src="visits-core.js"></script>
 <script src="app.js"></script>
+<script src="app-map.js"></script>
 </body>
 </html>
