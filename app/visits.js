@@ -67,13 +67,27 @@ function render() {
   } else $('summary').textContent = `${d.sites.filter(s => s.active !== false).length} active site/client rows` + (meta.now === 12 ? ' · past year' : ' · future year');
   if (!rows.length) { $('grid').className = 'msg'; $('grid').textContent = 'No sites match.'; return; }
   const head = '<thead><tr><th class="site">Site (' + rows.length + ')</th>' + V.MON.map((mn, m) => `<th class="${m === meta.now ? 'now' : ''}">${mn}</th>`).join('') + '</tr></thead>';
-  const body = rows.map(s => '<tr' + (s.active === false ? ' class="off"' : '') + '><td class="site"><div class="n">' + V.esc(s.name) + '</div><div class="s">' + V.esc(s.loc) + ' · ' + V.esc(s.pattern || 'M 6 Y') + ' · ' + V.esc(s.client || 'no client') + (s.annual < 0 ? ' · <b style="color:#b45309">no yearly month</b>' : '') + '</div></td>'
+  const body = rows.map(s => '<tr' + (s.active === false ? ' class="off"' : '') + '><td class="site"><div class="row1"><div><div class="n">' + V.esc(s.name) + '</div><div class="s">' + V.esc(s.client || 'no client') + ' · ' + V.esc(s.loc) + ' · ' + V.esc(s.pattern || 'M 6 Y') + (s.annual < 0 ? ' · <b style="color:#b45309">no yearly month</b>' : '') + '</div></div>'
+    + '<label class="sw" title="' + (s.active === false ? 'Inactive for this client - tap to make active' : 'Active for this client - tap to make inactive') + '"><input type="checkbox" data-sw="' + V.esc(s.id) + '"' + (s.active === false ? '' : ' checked') + '><span></span></label></div></td>'
     + V.MON.map((mn, m) => { const t = V.typeOf(s, m), x = V.statusOf(s, m, meta); const n = s.visits.filter(v => v.m === m).length;
       return `<td class="m${m === meta.now ? ' now' : ''}"><div class="c st-${x}" data-id="${V.esc(s.id)}" data-m="${m}" title="${mn}: ${t ? V.TYPE[t] : 'no visit'} — ${V.STATUS[x]}${n ? ' (' + n + ')' : ''}">${t === '?' ? 'M' : t || '·'}</div></td>`; }).join('')
     + '</tr>').join('');
   $('grid').className = ''; $('grid').innerHTML = '<table>' + head + '<tbody>' + body + '</tbody></table>';
 }
 
+// Row switch: site + client active / inactive (writes register Status + Active). No popup - the switch is the confirm.
+$('grid').addEventListener('change', async e => {
+  const cb = e.target.closest('input[data-sw]'); if (!cb) return;
+  const id = cb.dataset.sw, to = cb.checked, s = st.data.sites.find(x => x.id === id);
+  cb.disabled = true;
+  try {
+    await V.setActive(api(), key(), id, to);
+    if (s) s.active = to;
+    log('switch', 'saved', { id, client: s && s.client, active: to });
+  } catch (err) { cb.checked = !to; log('switch', 'failed', err.message); alert('Could not save: ' + err.message); }
+  cb.disabled = false;
+  render();
+});
 let panelAt = null;
 function openPanel(id, m) {
   const s = st.data.sites.find(x => x.id === id); if (!s) return;
