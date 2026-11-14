@@ -152,11 +152,15 @@ function ensureMap() {
     map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), 'top-right');
     map.on('error', e => log('map', 'error', e && e.error && e.error.message));
     map.on('load', () => {
-      map.addSource('sites', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-      map.addLayer({ id: 'sites', type: 'circle', source: 'sites', paint: {
+      // Grouping: nearby pins merge into a numbered circle (count = site/client rows); colour = worst status inside.
+      map.addSource('sites', { type: 'geojson', data: { type: 'FeatureCollection', features: [] },
+        cluster: true, clusterRadius: 55, clusterMaxZoom: 14,
+        clusterProperties: { rank: ['max', ['get', 'rank']], rows: ['+', ['get', 'n']], act: ['max', ['get', 'a']] } });
+      map.addLayer({ id: 'sites', type: 'circle', source: 'sites', filter: ['!', ['has', 'point_count']], paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 5, 13, 9], 'circle-color': ['get', 'color'],
         'circle-stroke-color': ['get', 'stroke'], 'circle-stroke-width': 1.5, 'circle-opacity': ['get', 'op'] } });
       map.on('click', 'sites', e => showPopup(e.features[0]));
+      map.on('render', updateClusterMarkers);
       map.on('mouseenter', 'sites', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'sites', () => { map.getCanvas().style.cursor = ''; });
       log('map', 'ready');
@@ -185,7 +189,8 @@ async function renderMap(rows) {
     at.set(k, g);
   }
   const features = [...at.values()].map(g => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [g.lng, g.lat] },
-    properties: { ids: g.ids.join('|'), color: COLOR[g.st], stroke: g.st === 'none' || g.st === 'norec' ? '#71717a' : '#ffffff', op: g.act ? 1 : 0.45 } }));
+    properties: { ids: g.ids.join('|'), color: COLOR[g.st], stroke: g.st === 'none' || g.st === 'norec' ? '#71717a' : '#ffffff', op: g.act ? 1 : 0.45,
+      rank: rank[g.st], n: g.ids.length, a: g.act ? 1 : 0 } }));
   map.getSource('sites').setData({ type: 'FeatureCollection', features });
   $('mapCount').textContent = `${rows.length - noGps} on map` + (noGps ? ` · ${noGps} without GPS` : '');
   if (!fitted && features.length) {
@@ -194,6 +199,36 @@ async function renderMap(rows) {
   }
   map.resize();
   log('map', 'rendered', { pins: features.length, rows: rows.length, noGps, month: V.MON[m] });
+}
+// Numbered group circles are HTML markers (no map fonts needed, so any tile provider works).
+const RANK_STATUS = ['none', 'norec', 'done', 'upcoming', 'due', 'missed'];
+let clusterMarkers = {};
+function updateClusterMarkers() {
+  if (!map || !map.getSource('sites') || !map.isSourceLoaded('sites')) return;
+  const keep = {};
+  for (const f of map.querySourceFeatures('sites')) {
+    const p = f.properties; if (!p.cluster) continue;
+    const id = p.cluster_id; if (keep[id]) continue;
+    let mk = clusterMarkers[id];
+    const stName = RANK_STATUS[p.rank] || 'none', n = p.rows || p.point_count;
+    if (!mk) {
+      const el = document.createElement('div'); el.className = 'mclus';
+      el.addEventListener('click', ev => { ev.stopPropagation(); zoomCluster(id, f.geometry.coordinates); });
+      mk = new maplibregl.Marker({ element: el }).setLngLat(f.geometry.coordinates);
+    }
+    const el = mk.getElement(), sz = n < 10 ? 28 : n < 50 ? 34 : 42;
+    el.textContent = n; el.title = n + ' site/client rows - tap to zoom in';
+    // set single properties: cssText would wipe the transform the map uses to position the marker
+    Object.assign(el.style, { width: sz + 'px', height: sz + 'px', background: COLOR[stName], color: stName === 'none' || stName === 'norec' ? '#3f3f46' : '#fff', opacity: p.act ? 1 : 0.55, zIndex: String(n) });
+    if (!clusterMarkers[id]) mk.addTo(map);
+    keep[id] = mk;
+  }
+  for (const id in clusterMarkers) if (!keep[id]) clusterMarkers[id].remove();
+  clusterMarkers = keep;
+}
+async function zoomCluster(id, at) {
+  try { const z = await map.getSource('sites').getClusterExpansionZoom(id); map.easeTo({ center: at, zoom: Math.min(z + 0.3, 17) }); }
+  catch (e) { log('map', 'cluster zoom failed', e.message); map.easeTo({ center: at, zoom: map.getZoom() + 2 }); }
 }
 function showPopup(f) {
   const meta = st.data.meta, m = mapMonth();
