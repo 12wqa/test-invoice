@@ -16,7 +16,7 @@ function key() { return store.raw('pi.adminKey') || (store.get('pi.settings', {}
   if (k) { try { localStorage.setItem('pi.adminKey', k); } catch {} history.replaceState(null, '', location.pathname); }
 })();
 
-const st = { year: new Date().getFullYear(), data: null, filter: 'all', q: '', client: '', inactive: false };
+const st = { year: new Date().getFullYear(), data: null, filter: 'all', q: '', client: '', inactive: false, view: 'grid', mapM: -1 };
 // One row per site + client (a site shared by two clients is two rows). Each row has its own Active flag.
 $('ver').textContent = BUILD.version;
 
@@ -58,6 +58,7 @@ function filtered() {
 function render() {
   const d = st.data, meta = d.meta;
   const rows = filtered();
+  if (st.view === 'map') renderMap(rows);
   // summary for this month (current year only)
   if (meta.now >= 0 && meta.now <= 11) {
     let done = 0, due = 0, y = 0, six = 0, none = 0;
@@ -118,6 +119,110 @@ $('chips').addEventListener('click', e => { const f = e.target.dataset.f; if (!f
 $('yPrev').onclick = () => { st.year--; load(); };
 $('yNext').onclick = () => { st.year++; load(); };
 $('reload').onclick = load;
+/* ---------- Map view (MapLibre, the open-source map library, with Mapbox map tiles) ----------
+   Pins = the same filtered rows as the grid, coloured by status in the chosen month. Coordinates come from
+   register columns Lat / Lng. Tiles: Mapbox raster tiles with the user's public token (saved in this browser).
+   To switch map provider, change TILE_URL only. */
+const KEY_MAPBOX = 'pi.mapboxToken';
+const TILE_URL = (t) => 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/512/{z}/{x}/{y}@2x?access_token=' + encodeURIComponent(t);
+const COLOR = { done: '#16a34a', due: '#f59e0b', missed: '#dc2626', upcoming: '#71717a', norec: '#ffffff', none: '#ffffff' };
+let map = null, mapReady = null, mapPopup = null;
+function mapToken() { return store.raw(KEY_MAPBOX); }
+function loadMapLib() {
+  if (self.maplibregl) return Promise.resolve();
+  return new Promise((ok, bad) => {
+    const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'vendor/maplibre/maplibre-gl.css'; document.head.appendChild(css);
+    const js = document.createElement('script'); js.src = 'vendor/maplibre/maplibre-gl.js'; js.onload = ok; js.onerror = () => bad(new Error('Map library did not load')); document.head.appendChild(js);
+  });
+}
+function ensureMap() {
+  if (mapReady) return mapReady;
+  const tok = mapToken();
+  if (!/^pk\./.test(tok)) { $('mapKeyCard').hidden = false; return Promise.reject(new Error('no key')); }
+  $('mapKeyCard').hidden = true;
+  mapReady = loadMapLib().then(() => new Promise(ok => {
+    map = new maplibregl.Map({
+      container: 'map', center: [145.0, -37.83], zoom: 9.3, attributionControl: false,
+      style: { version: 8, sources: { base: { type: 'raster', tiles: [TILE_URL(tok)], tileSize: 512,
+        attribution: '© <a href="https://www.mapbox.com/about/maps/" target="_blank">Mapbox</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>' } },
+        layers: [{ id: 'base', type: 'raster', source: 'base' }] }
+    });
+    map.addControl(new maplibregl.AttributionControl({ compact: true }));
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(new maplibregl.GeolocateControl({ trackUserLocation: false }), 'top-right');
+    map.on('error', e => log('map', 'error', e && e.error && e.error.message));
+    map.on('load', () => {
+      map.addSource('sites', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      map.addLayer({ id: 'sites', type: 'circle', source: 'sites', paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 5, 13, 9], 'circle-color': ['get', 'color'],
+        'circle-stroke-color': ['get', 'stroke'], 'circle-stroke-width': 1.5, 'circle-opacity': ['get', 'op'] } });
+      map.on('click', 'sites', e => showPopup(e.features[0]));
+      map.on('mouseenter', 'sites', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'sites', () => { map.getCanvas().style.cursor = ''; });
+      log('map', 'ready');
+      ok();
+    });
+  }));
+  mapReady.catch(e => { log('map', 'failed', e.message); mapReady = null; });
+  return mapReady;
+}
+function mapMonth() { const n = st.data.meta.now; return st.mapM >= 0 ? st.mapM : (n >= 0 && n <= 11 ? n : 0); }
+let fitted = false;
+async function renderMap(rows) {
+  const meta = st.data.meta, m = mapMonth();
+  $('mapMonth').innerHTML = V.MON.map((mn, i) => `<option value="${i}"${i === m ? ' selected' : ''}>${mn} ${meta.year}${i === meta.now ? ' (now)' : ''}</option>`).join('');
+  try { await ensureMap(); } catch { return; }
+  // one pin per location; rows at the same spot (several clients) share it, worst status wins the colour
+  const rank = { missed: 5, due: 4, upcoming: 3, done: 2, norec: 1, none: 0 };
+  const at = new Map();
+  let noGps = 0;
+  for (const s of rows) {
+    if (!s.lat || !s.lng) { noGps++; continue; }
+    const k = s.lat.toFixed(5) + ',' + s.lng.toFixed(5);
+    const x = V.statusOf(s, m, meta);
+    const g = at.get(k) || { lat: s.lat, lng: s.lng, ids: [], st: 'none', act: false };
+    g.ids.push(s.id); if (rank[x] > rank[g.st]) g.st = x; if (s.active !== false) g.act = true;
+    at.set(k, g);
+  }
+  const features = [...at.values()].map(g => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [g.lng, g.lat] },
+    properties: { ids: g.ids.join('|'), color: COLOR[g.st], stroke: g.st === 'none' || g.st === 'norec' ? '#71717a' : '#ffffff', op: g.act ? 1 : 0.45 } }));
+  map.getSource('sites').setData({ type: 'FeatureCollection', features });
+  $('mapCount').textContent = `${rows.length - noGps} on map` + (noGps ? ` · ${noGps} without GPS` : '');
+  if (!fitted && features.length) {
+    const b = new maplibregl.LngLatBounds(); features.forEach(f => b.extend(f.geometry.coordinates));
+    map.fitBounds(b, { padding: 40, maxZoom: 13, duration: 0 }); fitted = true;
+  }
+  map.resize();
+  log('map', 'rendered', { pins: features.length, rows: rows.length, noGps, month: V.MON[m] });
+}
+function showPopup(f) {
+  const meta = st.data.meta, m = mapMonth();
+  const ids = String(f.properties.ids).split('|');
+  const html = '<div class="mpop">' + ids.map(id => { const s = st.data.sites.find(x => x.id === id); if (!s) return '';
+    const x = V.statusOf(s, m, meta), t = V.typeOf(s, m);
+    return `<div class="pr"><b>${V.esc(s.name)}</b><span class="cl">${V.esc(s.client)} · ${V.esc(s.loc)}${s.active === false ? ' · inactive' : ''}</span><br>
+      <span class="vchip st-${x}">${V.MON[m]}: ${t ? V.TYPE[t] + ' · ' : ''}${V.STATUS[x]}</span><br><button type="button" data-open="${V.esc(s.id)}">Open month</button></div>`; }).join('') + '</div>';
+  if (mapPopup) mapPopup.remove();
+  mapPopup = new maplibregl.Popup({ maxWidth: '320px' }).setLngLat(f.geometry.coordinates).setHTML(html).addTo(map);
+  mapPopup.getElement().addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (b) openPanel(b.dataset.open, m); });
+}
+function setView(v) {
+  st.view = v;
+  document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  $('gridWrap').hidden = v !== 'grid'; $('mapWrap').hidden = v !== 'map';
+  try { localStorage.setItem('pi.visitsView', v); } catch {}
+  if (st.data) render();
+}
+$('views').addEventListener('click', e => { const v = e.target.closest('[data-v]'); if (v) setView(v.dataset.v); });
+$('mapMonth').addEventListener('change', () => { st.mapM = +$('mapMonth').value; render(); });
+$('mapKeySave').onclick = () => {
+  const k = $('mapKeyInput').value.trim();
+  if (!/^pk\./.test(k)) { alert('That is not a public key. It should start with pk.'); return; }
+  try { localStorage.setItem(KEY_MAPBOX, k); } catch {}
+  $('mapKeyInput').value = ''; if (map) { map.remove(); map = null; } mapReady = null; fitted = false; render();
+};
+$('mapKeyEdit').onclick = () => { $('mapKeyCard').hidden = !$('mapKeyCard').hidden; };
+if (store.raw('pi.visitsView') === '"map"' || store.raw('pi.visitsView') === 'map') setView('map');
 $('showInactive').addEventListener('change', () => { st.inactive = $('showInactive').checked; load(); });
 $('keySave').onclick = () => { const k = $('keyInput').value.trim(); if (!k) return; try { localStorage.setItem('pi.adminKey', k); } catch {} load(); };
 load();

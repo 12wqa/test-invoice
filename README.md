@@ -100,3 +100,9 @@ Placement: yearly in the **Annual month**; 6-monthly six months later; monthly i
 - **Phone strip** shows the row for the job's client, plus "Also here: …" for other clients at that site.
 - **6-monthly this month** filter on the visits page; the summary counts yearly and 6-monthly visits for active rows only.
 - **Quote quick items:** with *Also start a quote* ticked, the quick-item tiles add priced lines to the Xero draft quote (counted separately from the invoice). Typed items stay as no-price lines below them.
+
+## Map view (v13.0)
+- Visits page → **🗺 Map**. One pin per site location, coloured by status in the chosen month (worst status wins when several clients share a site). Same search, client and chip filters as the grid. Tap a pin → list of the site/client rows there → *Open month* for reports and the on/off switch.
+- **Coordinates:** register columns **AC Lat / AD Lng** (filled 14 Nov 2026 from the CheckMarks sites export: 225 by Sites JSON ID, 32 by address, 1 from the same AFS site). New sites need Lat/Lng typed in (or another fill run).
+- **Map key:** Mapbox *public* token (`pk.`), pasted once on the map (saved in that browser only, never in the code). Restrict it to `https://invoice.12wqa.com` in the Mapbox account.
+- **No lock-in:** the map library is MapLibre GL (open source, BSD, vendored in `app/vendor/maplibre`, v4.7.1). Mapbox only supplies the background tiles (`TILE_URL` in `visits.js`); swap that one line to change provider.

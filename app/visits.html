@@ -29,6 +29,14 @@
   .sw span::before { content:''; position:absolute; width:18px; height:18px; left:2px; top:2px; background:#fff; border-radius:50%; transition:transform .15s; box-shadow:0 1px 2px rgba(0,0,0,.3); }
   .sw input:checked + span { background:#16a34a; } .sw input:checked + span::before { transform:translateX(18px); }
   .sw input:disabled + span { opacity:.5; }
+  #mapWrap { margin:0 20px 20px; } #map { height:calc(100vh - 230px); min-height:380px; border-radius:10px; overflow:hidden; background:#e5e7eb; }
+  .mapbar { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; font-size:13px; color:var(--mute); padding:0 0 8px; }
+  .mapbar .mk { display:inline-flex; align-items:center; gap:4px; } .mapbar .mk i { width:11px; height:11px; border-radius:50%; display:inline-block; }
+  .mapbar select { font:inherit; padding:3px 6px; border-radius:6px; border:1px solid var(--line, #d4d4d8); }
+  button.link { background:none; border:none; color:#1d4ed8; padding:0; cursor:pointer; font:inherit; font-size:13px; }
+  #mapKeyCard { background:#fff; border-radius:10px; padding:14px; margin-top:10px; } #mapKeyCard p { color:var(--mute); margin:6px 0; } #mapKeyCard input { width:min(420px, 100%); padding:8px; }
+  .mpop { font:13px/1.35 system-ui, sans-serif; min-width:200px; } .mpop .pr { border-top:1px solid #eee; padding:6px 0; } .mpop .pr:first-of-type { border-top:none; }
+  .mpop b { display:block; } .mpop .cl { color:#71717a; } .mpop button { margin-top:4px; font:inherit; font-size:12px; padding:3px 8px; border-radius:6px; border:1px solid #d4d4d8; background:#fff; cursor:pointer; }
   .summary { color:var(--mute); font-size:13px; padding:8px 20px 0; }
   .legend { display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--mute); padding:6px 20px 10px; }
   .wrap { margin:0 20px 20px; overflow:auto; max-height:calc(100vh - 190px); border-radius:10px; }
@@ -52,7 +60,7 @@
   #keyCard { max-width:520px; margin:40px auto; background:#fff; border-radius:12px; padding:18px; }
   #keyCard input { width:100%; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; margin:8px 0; }
   #keyCard button { font:inherit; padding:8px 14px; border:0; border-radius:8px; background:var(--ink); color:#fff; }
-  @media (max-width: 700px) { th.site, td.site { min-width:150px; max-width:170px; } td.site .s { max-width:110px; } .wrap { max-height:none; margin:0 8px 20px; } }
+  @media (max-width: 700px) { #mapWrap { margin:0 8px 16px; } #map { height:calc(100vh - 290px); } th.site, td.site { min-width:150px; max-width:170px; } td.site .s { max-width:110px; } .wrap { max-height:none; margin:0 8px 20px; } }
 </style>
 </head>
 <body>
@@ -81,6 +89,7 @@
       <button data-f="missed">Missed this year</button>
       <button data-f="noannual">No yearly month</button>
     </div>
+    <div class="chips" id="views"><button data-v="grid" class="on">▦ Grid</button><button data-v="map">🗺 Map</button></div>
     <label class="inact"><input type="checkbox" id="showInactive"> Show inactive</label>
     <button id="reload" title="Reload">⟳</button>
   </div>
@@ -90,7 +99,18 @@
     <span class="vchip st-done">Done</span><span class="vchip st-due">Due this month</span><span class="vchip st-missed">Not recorded</span><span class="vchip st-upcoming">Coming up</span><span class="vchip st-norec">Before records</span><span class="vchip st-none">· no visit</span>
     &nbsp;Click a month to see its reports.
   </div>
-  <div class="wrap"><div id="grid" class="msg">Loading…</div></div>
+  <div class="wrap" id="gridWrap"><div id="grid" class="msg">Loading…</div></div>
+  <div id="mapWrap" hidden>
+    <div class="mapbar">Colour = status in <select id="mapMonth"></select>
+      <span class="mk"><i style="background:#16a34a"></i>Done</span><span class="mk"><i style="background:#f59e0b"></i>Due</span><span class="mk"><i style="background:#dc2626"></i>Not recorded</span><span class="mk"><i style="background:#71717a"></i>Coming up</span><span class="mk"><i style="background:#fff;border:1px solid #a1a1aa"></i>Before records / none</span>
+      <span id="mapCount"></span> <button id="mapKeyEdit" class="link" type="button">Mapbox key</button></div>
+    <div id="map"></div>
+    <div id="mapKeyCard" hidden>
+      <b>Mapbox public key needed</b>
+      <p>Paste your Mapbox <b>public</b> token (starts <code>pk.</code>). It is saved in this browser only, not in the app code. Never use a secret <code>sk.</code> token here.</p>
+      <input id="mapKeyInput" type="password" placeholder="pk.…" autocomplete="off"> <button id="mapKeySave" type="button">Save</button>
+    </div>
+  </div>
 </div>
 
 <aside id="panel" aria-live="polite"><button id="panelClose" aria-label="Close">✕</button><div id="panelBody"></div></aside>
